@@ -181,7 +181,7 @@
     overflow: hidden;
     padding: 1px 4px;
     font-size: 11.5px; line-height: 1.35;
-    cursor: pointer;
+    cursor: grab;
     z-index: 2;
   }
   .tg-ev:hover { filter: brightness(.95); z-index: 3; }
@@ -304,6 +304,26 @@
   }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+  /* ---------- master management ---------- */
+  .master-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; max-width: 720px; }
+  .master-grid .data-card { margin-bottom: 0; }
+  .master-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .master-head h3 { margin: 0; }
+  .master-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0; font-size: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .master-item:last-child { border-bottom: none; }
+  .master-item .m-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .master-item.inactive .m-name { color: var(--muted); }
+  .badge {
+    font-size: 10px; background: #e5e7eb; color: #6b7280;
+    border-radius: 999px; padding: 1px 7px; flex-shrink: 0;
+  }
+  .select-row { display: flex; gap: 6px; }
+  .select-row select { flex: 1; min-width: 0; }
+
   /* ---------- mobile ---------- */
   @media (max-width: 768px) {
     body { font-size: 14px; }
@@ -362,6 +382,28 @@
       <button class="btn primary" id="btn-add-nurse">＋ スタッフ追加</button>
     </div>
     <div class="item-list" id="nurse-list"></div>
+
+    <div class="page-head" style="margin-top:28px;">
+      <h2>マスタ管理</h2>
+    </div>
+    <div class="master-grid">
+      <div class="data-card">
+        <div class="master-head">
+          <h3>事業所マスタ</h3>
+          <button class="btn small" data-add-master="offices">＋ 追加</button>
+        </div>
+        <p>削除はできません。使わなくなったものは「無効化」してください（過去の割り当てはそのまま残ります）。</p>
+        <div class="master-list" id="office-master-list" data-master="offices"></div>
+      </div>
+      <div class="data-card">
+        <div class="master-head">
+          <h3>役職マスタ</h3>
+          <button class="btn small" data-add-master="titles">＋ 追加</button>
+        </div>
+        <p>削除はできません。使わなくなったものは「無効化」してください（過去の割り当てはそのまま残ります）。</p>
+        <div class="master-list" id="title-master-list" data-master="titles"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ============ patients ============ -->
@@ -530,11 +572,17 @@
       <div class="field-row">
         <div class="field">
           <label>事業所</label>
-          <input type="text" id="n-office" placeholder="例：中央事業所">
+          <div class="select-row">
+            <select id="n-office"></select>
+            <button type="button" class="btn small" id="n-office-add" title="事業所マスタに追加">＋</button>
+          </div>
         </div>
         <div class="field">
           <label>役職</label>
-          <input type="text" id="n-title" placeholder="例：看護師">
+          <div class="select-row">
+            <select id="n-title"></select>
+            <button type="button" class="btn small" id="n-title-add" title="役職マスタに追加">＋</button>
+          </div>
         </div>
       </div>
       <div class="field">
@@ -587,14 +635,36 @@
 
 /* ================= storage ================= */
 const LS_KEY = "vns_data_v1";
-let state = loadState();
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
+
+// マスタ（事業所・役職）：同名があれば再利用（無効なら再有効化）、なければ追加
+function addMaster(list, name) {
+  name = String(name || "").trim();
+  if (!name) return null;
+  const dup = list.find(x => x.name === name);
+  if (dup) { dup.active = true; return dup; }
+  const m = { id: uuid(), name, active: true };
+  list.push(m);
+  return m;
+}
 
 // 旧バージョンのデータ・バックアップを現行形式に揃える
 function normalizeState(d) {
   if (!Array.isArray(d.events)) d.events = [];
+  if (!Array.isArray(d.offices)) d.offices = [];
+  if (!Array.isArray(d.titles)) d.titles = [];
   for (const n of d.nurses) {
-    n.office = n.office || "";
-    n.title = n.title || "";
+    // 旧：フリーテキストの office / title → マスタ参照へ移行
+    if (n.office != null) {
+      if (n.office && !n.officeId) n.officeId = addMaster(d.offices, n.office).id;
+      delete n.office;
+    }
+    if (n.title != null) {
+      if (n.title && !n.titleId) n.titleId = addMaster(d.titles, n.title).id;
+      delete n.title;
+    }
+    n.officeId = n.officeId || "";
+    n.titleId = n.titleId || "";
     n.note = n.note || "";
   }
   for (const p of d.patients) {
@@ -604,6 +674,8 @@ function normalizeState(d) {
   }
   return d;
 }
+
+let state = loadState();
 
 function loadState() {
   try {
@@ -615,7 +687,7 @@ function loadState() {
       }
     }
   } catch (e) { /* fall through */ }
-  return { nurses: [], patients: [], visits: [], events: [] };
+  return { nurses: [], patients: [], visits: [], events: [], offices: [], titles: [] };
 }
 function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
@@ -661,7 +733,6 @@ function initSettingsUI() {
 }
 
 /* ================= helpers ================= */
-const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 
 function fmtDate(d) {
@@ -740,6 +811,9 @@ const getPatient = id => state.patients.find(p => p.id === id);
 const nurseColor = id => (getNurse(id) || {}).color || "#9ca3af";
 const nurseName = id => (getNurse(id) || {}).name || "（担当未設定）";
 const patientName = id => (getPatient(id) || {}).name || "（利用者不明）";
+const masterName = (list, id) => (list.find(x => x.id === id) || {}).name || "";
+const officeName = id => masterName(state.offices, id);
+const titleName = id => masterName(state.titles, id);
 
 function visitsOn(dateStr) {
   return state.visits
@@ -1016,6 +1090,7 @@ function renderSchedule() {
 }
 
 document.getElementById("calendar").addEventListener("click", e => {
+  if (suppressNextClick) { suppressNextClick = false; return; }
   const add = e.target.closest(".day-add");
   if (add) { openVisitDialog(null, add.dataset.date); return; }
   const aev = e.target.closest(".allday-ev[data-evid]");
@@ -1070,9 +1145,10 @@ document.getElementById("e-delete").addEventListener("click", () => {
   renderAll();
 });
 
-/* --- drag to create (week time grid) --- */
+/* --- drag: 空き枠で新規作成 ／ 既存予定をつかんで移動 --- */
 const SNAP_MIN = 30;
 let dragCtx = null;
+let suppressNextClick = false;  // ドラッグ移動直後の click で編集ダイアログが開かないように
 
 function pointerToMinutes(col, clientY) {
   const minH = Number(col.closest(".tg-wrap").dataset.minhour);
@@ -1080,16 +1156,64 @@ function pointerToMinutes(col, clientY) {
   const y = Math.min(Math.max(clientY - rect.top, 0), col.offsetHeight);
   return minH * 60 + y / HOUR_PX * 60;
 }
+function dayColAt(clientX) {
+  return [...document.querySelectorAll(".tg-day")].find(c => {
+    const r = c.getBoundingClientRect();
+    return clientX >= r.left && clientX < r.right;
+  });
+}
 
 document.getElementById("calendar").addEventListener("pointerdown", e => {
   if (e.pointerType === "mouse" && e.button !== 0) return;
+  suppressNextClick = false;
+  const evEl = e.target.closest(".tg-ev[data-id]");
+  if (evEl) {
+    // 既存予定の移動開始
+    const col = evEl.closest(".tg-day");
+    const v = state.visits.find(x => x.id === evEl.dataset.id);
+    if (!col || !v) return;
+    const s = toMin(v.start) ?? 9 * 60;
+    const en = Math.max(toMin(v.end) ?? s + 60, s + SNAP_MIN);
+    dragCtx = {
+      mode: "move", visit: v, el: evEl, dur: en - s,
+      grabMin: pointerToMinutes(col, e.clientY) - s,
+      x0: e.clientX, y0: e.clientY,
+      moved: false, ghost: null, target: null,
+    };
+    try { evEl.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+    return;
+  }
   const col = e.target.closest(".tg-day");
-  if (!col || e.target.closest(".tg-ev")) return;
-  dragCtx = { col, date: col.dataset.date, m0: pointerToMinutes(col, e.clientY), moved: false, ghost: null, range: null };
+  if (!col) return;
+  dragCtx = { mode: "create", col, date: col.dataset.date, m0: pointerToMinutes(col, e.clientY), moved: false, ghost: null, range: null };
   try { col.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
 });
+
 document.getElementById("calendar").addEventListener("pointermove", e => {
   if (!dragCtx) return;
+
+  if (dragCtx.mode === "move") {
+    if (!dragCtx.moved && Math.hypot(e.clientX - dragCtx.x0, e.clientY - dragCtx.y0) < 6) return;
+    dragCtx.moved = true;
+    const col = dayColAt(e.clientX);
+    if (!col) return;
+    let start = Math.round((pointerToMinutes(col, e.clientY) - dragCtx.grabMin) / SNAP_MIN) * SNAP_MIN;
+    start = Math.max(0, Math.min(start, 24 * 60 - dragCtx.dur));
+    dragCtx.target = { date: col.dataset.date, start };
+    if (!dragCtx.ghost) {
+      dragCtx.ghost = document.createElement("div");
+      dragCtx.ghost.className = "drag-ghost";
+      dragCtx.el.style.opacity = ".4";
+    }
+    if (dragCtx.ghost.parentNode !== col) col.appendChild(dragCtx.ghost);
+    const minH = Number(col.closest(".tg-wrap").dataset.minhour);
+    dragCtx.ghost.style.top = (start - minH * 60) / 60 * HOUR_PX + "px";
+    dragCtx.ghost.style.height = dragCtx.dur / 60 * HOUR_PX + "px";
+    dragCtx.ghost.textContent = `${minToTime(start)}–${minToTime(start + dragCtx.dur)}`;
+    return;
+  }
+
+  // create モード
   const m1 = pointerToMinutes(dragCtx.col, e.clientY);
   if (Math.abs(m1 - dragCtx.m0) >= 8) dragCtx.moved = true;
   if (!dragCtx.moved) return;
@@ -1106,11 +1230,25 @@ document.getElementById("calendar").addEventListener("pointermove", e => {
   dragCtx.ghost.style.height = (b - a) / 60 * HOUR_PX + "px";
   dragCtx.ghost.textContent = `${minToTime(a)}–${minToTime(b)}`;
 });
+
 function endDrag(commit) {
   if (!dragCtx) return;
   const ctx = dragCtx;
   dragCtx = null;
   if (ctx.ghost) ctx.ghost.remove();
+
+  if (ctx.mode === "move") {
+    if (ctx.el) ctx.el.style.opacity = "";
+    if (!commit || !ctx.moved || !ctx.target) return;  // 動かしていなければ click に任せる（編集ダイアログ）
+    suppressNextClick = true;
+    ctx.visit.date = ctx.target.date;
+    ctx.visit.start = minToTime(ctx.target.start);
+    ctx.visit.end = minToTime(ctx.target.start + ctx.dur);
+    saveState();
+    renderSchedule();
+    return;
+  }
+
   if (!commit) return;
   let s, en;
   if (ctx.moved && ctx.range) {
@@ -1257,12 +1395,23 @@ function nextFreeColor() {
   return PALETTE.find(c => !used.has(c)) || PALETTE[state.nurses.length % PALETTE.length];
 }
 
+// マスタ選択肢を埋める（有効のみ。編集中スタッフに割り当て済みの無効マスタは「（無効）」付きで残す）
+function fillMasterSelect(sel, list, selectedId) {
+  const opts = [`<option value="">未設定</option>`];
+  for (const m of list) {
+    if (m.active || m.id === selectedId) {
+      opts.push(`<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${escapeHtml(m.name)}${m.active ? "" : "（無効）"}</option>`);
+    }
+  }
+  sel.innerHTML = opts.join("");
+}
+
 function openNurseDialog(nurse) {
   editingNurseId = nurse ? nurse.id : null;
   document.getElementById("nurse-dlg-title").textContent = nurse ? "スタッフを編集" : "スタッフを追加";
   document.getElementById("n-name").value = nurse?.name || "";
-  document.getElementById("n-office").value = nurse?.office || "";
-  document.getElementById("n-title").value = nurse?.title || "";
+  fillMasterSelect(document.getElementById("n-office"), state.offices, nurse?.officeId || "");
+  fillMasterSelect(document.getElementById("n-title"), state.titles, nurse?.titleId || "");
   document.getElementById("n-note").value = nurse?.note || "";
   selectedColor = nurse?.color || nextFreeColor();
   document.getElementById("n-custom-color").value = /^#[0-9a-f]{6}$/i.test(selectedColor) ? selectedColor : "#2563eb";
@@ -1273,19 +1422,34 @@ document.getElementById("btn-add-nurse").addEventListener("click", () => openNur
 
 document.getElementById("n-save").addEventListener("click", () => {
   const name = document.getElementById("n-name").value.trim();
-  const office = document.getElementById("n-office").value.trim();
-  const title = document.getElementById("n-title").value.trim();
+  const officeId = document.getElementById("n-office").value;
+  const titleId = document.getElementById("n-title").value;
   const note = document.getElementById("n-note").value.trim();
   if (!name) { alert("名前を入力してください。"); return; }
   if (editingNurseId) {
-    Object.assign(state.nurses.find(n => n.id === editingNurseId), { name, color: selectedColor, office, title, note });
+    Object.assign(state.nurses.find(n => n.id === editingNurseId), { name, color: selectedColor, officeId, titleId, note });
   } else {
-    state.nurses.push({ id: uuid(), name, color: selectedColor, office, title, note });
+    state.nurses.push({ id: uuid(), name, color: selectedColor, officeId, titleId, note });
   }
   saveState();
   nurseDlg.close();
   renderAll();
 });
+
+// ダイアログ内からマスタを直接追加
+for (const [btnId, selId, listKey, label] of [
+  ["n-office-add", "n-office", "offices", "事業所"],
+  ["n-title-add", "n-title", "titles", "役職"],
+]) {
+  document.getElementById(btnId).addEventListener("click", () => {
+    const name = prompt(`追加する${label}名を入力してください`);
+    if (!name || !name.trim()) return;
+    const m = addMaster(state[listKey], name);
+    saveState();
+    fillMasterSelect(document.getElementById(selId), state[listKey], m.id);
+    renderMasterLists();
+  });
+}
 
 function renderNurseList() {
   const el = document.getElementById("nurse-list");
@@ -1295,7 +1459,7 @@ function renderNurseList() {
   }
   el.innerHTML = state.nurses.map(n => {
     const count = state.visits.filter(v => v.nurseId === n.id && v.date >= todayStr()).length;
-    const sub = [n.office, n.title, n.note].filter(Boolean).join("・");
+    const sub = [officeName(n.officeId), titleName(n.titleId), n.note].filter(Boolean).join("・");
     return `<div class="item-card">
       <div class="swatch" style="background:${n.color}"></div>
       <div class="info">
@@ -1324,6 +1488,71 @@ document.getElementById("nurse-list").addEventListener("click", e => {
     ui.hiddenNurses.delete(n.id);
     saveState();
     renderAll();
+  }
+});
+
+/* ================= master management (事業所・役職) ================= */
+const MASTER_LABEL = { offices: "事業所", titles: "役職" };
+
+function renderMasterLists() {
+  for (const [key, elId] of [["offices", "office-master-list"], ["titles", "title-master-list"]]) {
+    const list = state[key];
+    const usedCount = id => key === "offices"
+      ? state.nurses.filter(n => n.officeId === id).length
+      : state.nurses.filter(n => n.titleId === id).length;
+    document.getElementById(elId).innerHTML = list.length
+      ? list.map(m => `<div class="master-item ${m.active ? "" : "inactive"}">
+          <span class="m-name">${escapeHtml(m.name)}</span>
+          ${m.active ? "" : `<span class="badge">無効</span>`}
+          <span class="badge" title="割り当て中のスタッフ数">${usedCount(m.id)}名</span>
+          <button class="btn small" data-rename-master="${key}:${m.id}">名称変更</button>
+          <button class="btn small ${m.active ? "danger" : ""}" data-toggle-master="${key}:${m.id}">${m.active ? "無効化" : "有効化"}</button>
+        </div>`).join("")
+      : `<div style="color:var(--muted);font-size:13px;padding:6px 0;">未登録です。「＋ 追加」から登録してください。</div>`;
+  }
+}
+
+document.getElementById("tab-staff").addEventListener("click", e => {
+  const addBtn = e.target.closest("[data-add-master]");
+  if (addBtn) {
+    const key = addBtn.dataset.addMaster;
+    const name = prompt(`追加する${MASTER_LABEL[key]}名を入力してください`);
+    if (!name || !name.trim()) return;
+    addMaster(state[key], name);
+    saveState();
+    renderMasterLists();
+    return;
+  }
+  const renameBtn = e.target.closest("[data-rename-master]");
+  if (renameBtn) {
+    const [key, id] = renameBtn.dataset.renameMaster.split(":");
+    const m = state[key].find(x => x.id === id);
+    if (!m) return;
+    const name = prompt(`${MASTER_LABEL[key]}の新しい名称を入力してください`, m.name);
+    if (!name || !name.trim() || name.trim() === m.name) return;
+    if (state[key].some(x => x.id !== id && x.name === name.trim())) { alert("同じ名称がすでに登録されています。"); return; }
+    m.name = name.trim();
+    saveState();
+    renderAll();  // スタッフ一覧の表示名も更新
+    return;
+  }
+  const toggleBtn = e.target.closest("[data-toggle-master]");
+  if (toggleBtn) {
+    const [key, id] = toggleBtn.dataset.toggleMaster.split(":");
+    const m = state[key].find(x => x.id === id);
+    if (!m) return;
+    if (m.active) {
+      const used = key === "offices"
+        ? state.nurses.filter(n => n.officeId === id).length
+        : state.nurses.filter(n => n.titleId === id).length;
+      const msg = used
+        ? `「${m.name}」を無効化しますか？\n割り当て中のスタッフ ${used}名 の表示はそのまま残りますが、新しく選択できなくなります。`
+        : `「${m.name}」を無効化しますか？`;
+      if (!confirm(msg)) return;
+    }
+    m.active = !m.active;
+    saveState();
+    renderMasterLists();
   }
 });
 
@@ -1434,7 +1663,7 @@ const PATIENT_CSV_HEADER = ["名前", "訪問先", "備考"];
 const isHexColor = c => /^#[0-9a-f]{6}$/i.test(c || "");
 
 document.getElementById("btn-nurse-csv").addEventListener("click", () => {
-  const rows = [NURSE_CSV_HEADER, ...state.nurses.map(n => [n.name, n.office, n.title, n.note, n.color])];
+  const rows = [NURSE_CSV_HEADER, ...state.nurses.map(n => [n.name, officeName(n.officeId), titleName(n.titleId), n.note, n.color])];
   downloadFile(`houkan-staff-${todayStr()}.csv`, toCSV(rows), "text/csv;charset=utf-8");
 });
 document.getElementById("btn-patient-csv").addEventListener("click", () => {
@@ -1442,7 +1671,9 @@ document.getElementById("btn-patient-csv").addEventListener("click", () => {
   downloadFile(`houkan-patients-${todayStr()}.csv`, toCSV(rows), "text/csv;charset=utf-8");
 });
 document.getElementById("btn-nurse-json").addEventListener("click", () => {
-  downloadFile(`houkan-staff-${todayStr()}.json`, JSON.stringify({ nurses: state.nurses }, null, 2), "application/json");
+  // 事業所・役職は名前で出力（インポート時にマスタへ自動登録される）
+  const nurses = state.nurses.map(n => ({ name: n.name, office: officeName(n.officeId), title: titleName(n.titleId), note: n.note, color: n.color }));
+  downloadFile(`houkan-staff-${todayStr()}.json`, JSON.stringify({ nurses }, null, 2), "application/json");
 });
 document.getElementById("btn-patient-json").addEventListener("click", () => {
   downloadFile(`houkan-patients-${todayStr()}.json`, JSON.stringify({ patients: state.patients }, null, 2), "application/json");
@@ -1516,8 +1747,17 @@ async function importMaster(file, kind) {
   // 事前に件数を出して確認
   const plan = mergeMaster(JSON.parse(JSON.stringify(list)), items, x => x);
   if (!confirm(`${label}を取り込みます：追加 ${plan.added}件・更新 ${plan.updated}件\n（既存の${label}は削除されません）よろしいですか？`)) return;
+  if (kind === "nurse") {
+    // 事業所・役職は名前で受け取り、マスタに自動登録してID参照へ変換
+    items = items.map(item => {
+      const out = { ...item };
+      if ("office" in out) { out.officeId = out.office ? addMaster(state.offices, out.office).id : ""; delete out.office; }
+      if ("title" in out) { out.titleId = out.title ? addMaster(state.titles, out.title).id : ""; delete out.title; }
+      return out;
+    });
+  }
   const makeNew = kind === "nurse"
-    ? item => ({ id: uuid(), name: item.name, color: isHexColor(item.color) ? item.color : nextFreeColor(), office: item.office || "", title: item.title || "", note: item.note || "" })
+    ? item => ({ id: uuid(), name: item.name, color: isHexColor(item.color) ? item.color : nextFreeColor(), officeId: item.officeId || "", titleId: item.titleId || "", note: item.note || "" })
     : item => ({ id: uuid(), name: item.name, address: item.address || "", note: item.note || "" });
   const result = mergeMaster(list, items, makeNew);
   saveState();
@@ -1541,7 +1781,7 @@ for (const [inputId, kind] of [["nurse-import-file", "nurse"], ["patient-import-
 document.getElementById("btn-clear").addEventListener("click", () => {
   if (!confirm("すべてのデータを削除します。よろしいですか？")) return;
   if (!confirm("本当に削除しますか？この操作は元に戻せません。")) return;
-  state = { nurses: [], patients: [], visits: [], events: [] };
+  state = { nurses: [], patients: [], visits: [], events: [], offices: [], titles: [] };
   saveState();
   renderAll();
 });
@@ -1551,13 +1791,24 @@ document.getElementById("btn-sample").addEventListener("click", () => {
       !confirm("現在のデータは上書きされます。サンプルデータを投入しますか？")) return;
   const n1 = uuid(), n2 = uuid(), n3 = uuid();
   const p1 = uuid(), p2 = uuid(), p3 = uuid(), p4 = uuid();
+  const o1 = uuid(), o2 = uuid();
+  const t1 = uuid(), t2 = uuid(), t3 = uuid();
   const mon = mondayOf(new Date());
   const d = i => fmtDate(addDays(mon, i));
   state = {
+    offices: [
+      { id: o1, name: "中央事業所", active: true },
+      { id: o2, name: "東事業所", active: true },
+    ],
+    titles: [
+      { id: t1, name: "管理者", active: true },
+      { id: t2, name: "看護師", active: true },
+      { id: t3, name: "理学療法士", active: true },
+    ],
     nurses: [
-      { id: n1, name: "佐藤", color: "#e6194b", office: "中央事業所", title: "管理者", note: "" },
-      { id: n2, name: "鈴木", color: "#4363d8", office: "中央事業所", title: "看護師", note: "" },
-      { id: n3, name: "田中", color: "#3cb44b", office: "東事業所", title: "理学療法士", note: "火曜午前は不在" },
+      { id: n1, name: "佐藤", color: "#e6194b", officeId: o1, titleId: t1, note: "" },
+      { id: n2, name: "鈴木", color: "#4363d8", officeId: o1, titleId: t2, note: "" },
+      { id: n3, name: "田中", color: "#3cb44b", officeId: o2, titleId: t3, note: "火曜午前は不在" },
     ],
     patients: [
       { id: p1, name: "山田 花子", address: "青葉区一丁目1-2", note: "週2回・服薬管理" },
@@ -1594,6 +1845,7 @@ document.querySelectorAll("dialog [data-close]").forEach(b =>
 function renderAll() {
   renderSchedule();
   renderNurseList();
+  renderMasterLists();
   renderPatientList();
   renderDataStats();
 }
