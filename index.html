@@ -91,42 +91,99 @@
   .chip .dot { width: 12px; height: 12px; border-radius: 50%; }
   .chip.off { opacity: .35; }
 
-  /* ---------- week grid ---------- */
-  .week-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
+  /* ---------- week time grid ---------- */
+  .dow { color: var(--muted); font-weight: 400; }
+  .dow.sat { color: #2563eb; }
+  .dow.sun { color: #dc2626; }
+  .day-add {
+    border: none; background: none; color: var(--muted);
+    font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 4px;
   }
-  .day-col {
+  .day-add:hover { background: #e5e7eb; color: var(--text); }
+
+  .tg-wrap {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    min-height: 140px;
-    display: flex; flex-direction: column;
-    overflow: hidden;
+    overflow: auto;
+    max-height: calc(100vh - 235px);
+    min-height: 300px;
+    box-shadow: var(--shadow);
   }
-  .day-head {
-    padding: 6px 8px;
-    font-size: 13px; font-weight: 600;
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 6px;
+  .tg {
+    display: grid;
+    grid-template-columns: 50px repeat(7, minmax(96px, 1fr));
+  }
+  .tg-corner {
+    position: sticky; top: 0; left: 0; z-index: 7;
     background: #fafbfc;
+    border-bottom: 1px solid var(--border);
   }
-  .day-head .dow { color: var(--muted); font-weight: 400; }
-  .day-head .dow.sat { color: #2563eb; }
-  .day-head .dow.sun { color: #dc2626; }
-  .day-col.today .day-head { background: #eff6ff; }
-  .day-col.today .day-num {
+  .tg-dayhead {
+    position: sticky; top: 0; z-index: 5;
+    background: #fafbfc;
+    border-bottom: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    padding: 6px 2px;
+    font-size: 12.5px; font-weight: 600;
+    text-align: center; white-space: nowrap;
+  }
+  .tg-dayhead.today { background: #eff6ff; }
+  .tg-dayhead.today .day-num {
     background: var(--primary); color: #fff;
-    border-radius: 50%; width: 24px; height: 24px;
-    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; padding: 1px 7px;
   }
-  .day-add {
-    margin-left: auto; border: none; background: none; color: var(--muted);
-    font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+  .tg-gutter {
+    position: sticky; left: 0; z-index: 4;
+    background: var(--card);
+    border-right: 1px solid var(--border);
   }
-  .day-add:hover { background: #e5e7eb; color: var(--text); }
-  .day-events { padding: 6px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+  .tg-hour {
+    position: absolute; right: 4px;
+    font-size: 10.5px; color: var(--muted);
+    transform: translateY(-50%);
+  }
+  .tg-day {
+    position: relative;
+    border-left: 1px solid var(--border);
+    touch-action: pan-x pan-y;
+    cursor: crosshair;
+  }
+  .tg-ev {
+    position: absolute;
+    border-left: 3px solid var(--c, #9ca3af);
+    border-radius: 5px;
+    box-shadow: 0 0 0 1px #fff;
+    overflow: hidden;
+    padding: 1px 4px;
+    font-size: 11.5px; line-height: 1.35;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .tg-ev:hover { filter: brightness(.95); z-index: 3; }
+  .tg-ev .ev-time { font-weight: 700; }
+  .tg-ev .ev-patient { font-weight: 600; }
+  .tg-ev .ev-nurse {
+    display: inline-block;
+    font-size: 10px; padding: 0 6px; border-radius: 999px;
+  }
+  .drag-ghost {
+    position: absolute; left: 2px; right: 2px;
+    background: rgba(37, 99, 235, .16);
+    border: 1.5px dashed var(--primary);
+    border-radius: 6px;
+    z-index: 4; pointer-events: none;
+    font-size: 11px; color: var(--primary-dark); font-weight: 700;
+    padding: 2px 4px;
+  }
+  .now-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: #ef4444; z-index: 3; pointer-events: none;
+  }
+  .now-line::before {
+    content: ""; position: absolute; left: -1px; top: -3px;
+    width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
+  }
 
   .visit {
     border-left: 4px solid var(--c, #9ca3af);
@@ -230,14 +287,19 @@
   }
   .data-card h3 { margin: 0 0 6px; font-size: 15px; }
   .data-card p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+  .set-select {
+    padding: 9px 10px; min-width: 110px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 15px; font-family: inherit; background: #fff;
+  }
 
   /* ---------- mobile ---------- */
   @media (max-width: 768px) {
     body { font-size: 14px; }
-    .week-grid { grid-template-columns: 1fr; }
-    .day-col { min-height: 0; }
-    .day-col.empty-day .day-events { display: none; }
-    .day-col.empty-day { opacity: .7; }
+    .tg { grid-template-columns: 40px repeat(7, minmax(84px, 1fr)); }
+    .tg-wrap { max-height: calc(100vh - 215px); }
+    .tg-hour { font-size: 9.5px; right: 2px; }
+    .tg-ev { font-size: 10px; padding: 0 3px; }
     .visit { font-size: 14px; padding: 8px 10px; }
     .month-cell { min-height: 64px; }
     .m-pill { font-size: 9px; padding: 1px 2px; }
@@ -256,6 +318,7 @@
     <button class="tab-btn" data-tab="staff">👩‍⚕️ スタッフ</button>
     <button class="tab-btn" data-tab="patients">🏠 利用者</button>
     <button class="tab-btn" data-tab="data">💾 データ</button>
+    <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
   </nav>
 </header>
 
@@ -325,6 +388,32 @@
       <h3>全データ削除</h3>
       <p>すべてのスタッフ・利用者・予定を削除します。元に戻せません。</p>
       <button class="btn danger" id="btn-clear">全データを削除</button>
+    </div>
+  </section>
+
+  <!-- ============ settings ============ -->
+  <section id="tab-settings">
+    <div class="page-head"><h2>個人設定</h2></div>
+    <div class="data-card">
+      <h3>デフォルト表示</h3>
+      <p>アプリを開いたときに最初に表示するカレンダーです。</p>
+      <select id="set-default-view" class="set-select">
+        <option value="day">日</option>
+        <option value="week">週</option>
+        <option value="month">月</option>
+      </select>
+    </div>
+    <div class="data-card">
+      <h3>週表示の時間帯</h3>
+      <p>週表示の縦軸（時間軸）に表示する範囲です。範囲外に予定がある週は自動的に広がって表示されるので、予定が隠れることはありません。</p>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="set-start-hour" class="set-select"></select>
+        <span>〜</span>
+        <select id="set-end-hour" class="set-select"></select>
+      </div>
+    </div>
+    <div class="data-card">
+      <p style="margin:0;">設定は自動保存され、この端末（ブラウザ）にのみ適用されます。</p>
     </div>
   </section>
 </main>
@@ -442,6 +531,47 @@ function loadState() {
 }
 function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
+/* ================= personal settings ================= */
+const SETTINGS_KEY = "vns_settings_v1";
+const DEFAULT_SETTINGS = { defaultView: "week", weekStartHour: 0, weekEndHour: 24 };
+let settings = loadSettings();
+
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (s && typeof s === "object") return { ...DEFAULT_SETTINGS, ...s };
+  } catch (e) { /* fall through */ }
+  return { ...DEFAULT_SETTINGS };
+}
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+function initSettingsUI() {
+  const sv = document.getElementById("set-default-view");
+  const sh = document.getElementById("set-start-hour");
+  const eh = document.getElementById("set-end-hour");
+  sh.innerHTML = Array.from({ length: 24 }, (_, h) => `<option value="${h}">${h}:00</option>`).join("");
+  eh.innerHTML = Array.from({ length: 24 }, (_, i) => `<option value="${i + 1}">${i + 1}:00</option>`).join("");
+  sv.value = settings.defaultView;
+  sh.value = settings.weekStartHour;
+  eh.value = settings.weekEndHour;
+  sv.addEventListener("change", () => {
+    settings.defaultView = sv.value;
+    saveSettings();
+    ui.view = sv.value;
+    renderSchedule();
+  });
+  const applyHours = () => {
+    let a = Number(sh.value), b = Number(eh.value);
+    if (b <= a) { b = Math.min(24, a + 1); eh.value = b; }
+    settings.weekStartHour = a;
+    settings.weekEndHour = b;
+    saveSettings();
+    renderSchedule();
+  };
+  sh.addEventListener("change", applyHours);
+  eh.addEventListener("change", applyHours);
+}
+
 /* ================= helpers ================= */
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
@@ -487,9 +617,10 @@ function visitsOn(dateStr) {
 /* ================= UI state ================= */
 const ui = {
   tab: "schedule",
-  view: "week",
+  view: settings.defaultView,
   anchor: new Date(),        // day currently in focus
   hiddenNurses: new Set(),   // nurse ids filtered out
+  weekScroll: null,          // 週表示のスクロール位置（ユーザー操作で更新）
 };
 
 /* ================= tabs ================= */
@@ -524,6 +655,99 @@ document.getElementById("legend").addEventListener("click", e => {
   renderSchedule();
 });
 
+/* ---------- week time grid ---------- */
+const HOUR_PX = 48;
+const toMin = t => { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const minToTime = m => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+// 同時刻に重なる予定を横並びにするための列割り当て
+function layoutDay(vs) {
+  const evs = vs.map(v => {
+    const s = toMin(v.start) ?? 9 * 60;
+    let e = toMin(v.end) ?? s + 60;
+    if (e <= s) e = s + 30;
+    return { v, s, e };
+  });
+  evs.sort((a, b) => a.s - b.s || a.e - b.e);
+  let cluster = [], colEnds = [], maxEnd = -1;
+  const flush = () => {
+    for (const ev of cluster) ev.cols = colEnds.length;
+    cluster = []; colEnds = [];
+  };
+  for (const ev of evs) {
+    if (cluster.length && ev.s >= maxEnd) { flush(); maxEnd = -1; }
+    let col = colEnds.findIndex(end => end <= ev.s);
+    if (col === -1) { col = colEnds.length; colEnds.push(0); }
+    colEnds[col] = ev.e;
+    ev.col = col;
+    cluster.push(ev);
+    maxEnd = Math.max(maxEnd, ev.e);
+  }
+  flush();
+  return evs;
+}
+
+function weekGridHtml(mon) {
+  const today = todayStr();
+  const days = [];
+  // 設定の時間帯をベースに、範囲外の予定があれば自動で広げる
+  let minH = settings.weekStartHour, maxH = settings.weekEndHour;
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(mon, i);
+    const ds = fmtDate(d);
+    const vs = visitsOn(ds);
+    for (const v of vs) {
+      const s = toMin(v.start) ?? 9 * 60;
+      const e = Math.max(toMin(v.end) ?? s + 60, s + 30);
+      minH = Math.min(minH, Math.floor(s / 60));
+      maxH = Math.max(maxH, Math.ceil(e / 60));
+    }
+    days.push({ d, ds, vs });
+  }
+  minH = Math.max(0, minH);
+  maxH = Math.min(24, Math.max(maxH, minH + 1));
+  const totalH = (maxH - minH) * HOUR_PX;
+  const lineBg = `repeating-linear-gradient(to bottom, #edf0f3 0, #edf0f3 1px, transparent 1px, transparent ${HOUR_PX}px)`;
+
+  let html = `<div class="tg-wrap" data-minhour="${minH}"><div class="tg"><div class="tg-corner"></div>`;
+  for (const { d, ds } of days) {
+    const dowCls = d.getDay() === 0 ? "sun" : d.getDay() === 6 ? "sat" : "";
+    html += `<div class="tg-dayhead ${ds === today ? "today" : ""}">
+      <span class="day-num">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span><button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>
+    </div>`;
+  }
+  html += `<div class="tg-gutter" style="height:${totalH}px">`;
+  for (let h = minH + 1; h < maxH; h++) {
+    html += `<span class="tg-hour" style="top:${(h - minH) * HOUR_PX}px">${h}:00</span>`;
+  }
+  html += `</div>`;
+
+  const now = new Date();
+  const nowDs = fmtDate(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  for (const { ds, vs } of days) {
+    html += `<div class="tg-day" data-date="${ds}" style="height:${totalH}px;background-image:${lineBg}">`;
+    for (const ev of layoutDay(vs)) {
+      const v = ev.v;
+      const c = nurseColor(v.nurseId);
+      const top = (ev.s - minH * 60) / 60 * HOUR_PX;
+      const h = Math.max((ev.e - ev.s) / 60 * HOUR_PX - 2, 16);
+      const w = 100 / ev.cols;
+      const tip = `${v.start || ""}–${v.end || ""} ${patientName(v.patientId)} / ${nurseName(v.nurseId)}${v.memo ? " / " + v.memo : ""}`;
+      html += `<div class="tg-ev" data-id="${v.id}" title="${escapeHtml(tip)}"
+        style="top:${top}px;height:${h}px;left:calc(${w * ev.col}% + 1px);width:calc(${w}% - 3px);--c:${c};background:${hexToRgba(c, 0.16)}">
+        <span class="ev-time">${v.start || ""}</span> <span class="ev-patient">${escapeHtml(patientName(v.patientId))}</span><br>
+        <span class="ev-nurse" style="background:${c};color:${contrastText(c)}">${escapeHtml(nurseName(v.nurseId))}</span>
+      </div>`;
+    }
+    if (ds === nowDs && nowMin >= minH * 60 && nowMin <= maxH * 60) {
+      html += `<div class="now-line" style="top:${(nowMin - minH * 60) / 60 * HOUR_PX}px"></div>`;
+    }
+    html += `</div>`;
+  }
+  return html + `</div></div>`;
+}
+
 function visitCardHtml(v, compact) {
   const c = nurseColor(v.nurseId);
   const bg = hexToRgba(c, 0.13);
@@ -557,22 +781,17 @@ function renderSchedule() {
     const sun = addDays(mon, 6);
     label.textContent = `${mon.getFullYear()}年${mon.getMonth() + 1}月${mon.getDate()}日〜` +
       (mon.getMonth() === sun.getMonth() ? `${sun.getDate()}日` : `${sun.getMonth() + 1}月${sun.getDate()}日`);
-    let html = `<div class="week-grid">`;
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(mon, i);
-      const ds = fmtDate(d);
-      const vs = visitsOn(ds);
-      const dowCls = d.getDay() === 0 ? "sun" : d.getDay() === 6 ? "sat" : "";
-      html += `<div class="day-col ${ds === today ? "today" : ""} ${vs.length ? "" : "empty-day"}">
-        <div class="day-head">
-          <span class="day-num">${d.getDate()}</span>
-          <span class="dow ${dowCls}">(${DOW[d.getDay()]})</span>
-          <button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>
-        </div>
-        <div class="day-events">${vs.map(v => visitCardHtml(v, true)).join("")}</div>
-      </div>`;
+    // 再描画時はスクロール位置を保持、初回は8時付近を表示
+    cal.innerHTML = weekGridHtml(mon);
+    const wrap = cal.querySelector(".tg-wrap");
+    if (ui.weekScroll) {
+      wrap.scrollTop = ui.weekScroll.t;
+      wrap.scrollLeft = ui.weekScroll.l;
+    } else {
+      wrap.scrollTop = Math.max(0, (8 - Number(wrap.dataset.minhour)) * HOUR_PX);
     }
-    cal.innerHTML = html + `</div>`;
+    // 非表示タブ中の描画では scrollTop 代入が効かないため、実際にスクロールできた時だけ記憶する
+    wrap.addEventListener("scroll", () => { ui.weekScroll = { t: wrap.scrollTop, l: wrap.scrollLeft }; });
 
   } else if (ui.view === "day") {
     const d = ui.anchor;
@@ -610,7 +829,7 @@ function renderSchedule() {
 document.getElementById("calendar").addEventListener("click", e => {
   const add = e.target.closest(".day-add");
   if (add) { openVisitDialog(null, add.dataset.date); return; }
-  const card = e.target.closest(".visit[data-id]");
+  const card = e.target.closest(".visit[data-id], .tg-ev[data-id]");
   if (card) {
     const v = state.visits.find(x => x.id === card.dataset.id);
     if (v) openVisitDialog(v);
@@ -619,6 +838,63 @@ document.getElementById("calendar").addEventListener("click", e => {
   const cell = e.target.closest(".month-cell[data-date]");
   if (cell) { ui.anchor = parseDate(cell.dataset.date); ui.view = "day"; renderSchedule(); }
 });
+
+/* --- drag to create (week time grid) --- */
+const SNAP_MIN = 30;
+let dragCtx = null;
+
+function pointerToMinutes(col, clientY) {
+  const minH = Number(col.closest(".tg-wrap").dataset.minhour);
+  const rect = col.getBoundingClientRect();
+  const y = Math.min(Math.max(clientY - rect.top, 0), col.offsetHeight);
+  return minH * 60 + y / HOUR_PX * 60;
+}
+
+document.getElementById("calendar").addEventListener("pointerdown", e => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  const col = e.target.closest(".tg-day");
+  if (!col || e.target.closest(".tg-ev")) return;
+  dragCtx = { col, date: col.dataset.date, m0: pointerToMinutes(col, e.clientY), moved: false, ghost: null, range: null };
+  try { col.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+});
+document.getElementById("calendar").addEventListener("pointermove", e => {
+  if (!dragCtx) return;
+  const m1 = pointerToMinutes(dragCtx.col, e.clientY);
+  if (Math.abs(m1 - dragCtx.m0) >= 8) dragCtx.moved = true;
+  if (!dragCtx.moved) return;
+  const a = Math.floor(Math.min(dragCtx.m0, m1) / SNAP_MIN) * SNAP_MIN;
+  const b = Math.max(Math.ceil(Math.max(dragCtx.m0, m1) / SNAP_MIN) * SNAP_MIN, a + SNAP_MIN);
+  dragCtx.range = [a, b];
+  if (!dragCtx.ghost) {
+    dragCtx.ghost = document.createElement("div");
+    dragCtx.ghost.className = "drag-ghost";
+    dragCtx.col.appendChild(dragCtx.ghost);
+  }
+  const minH = Number(dragCtx.col.closest(".tg-wrap").dataset.minhour);
+  dragCtx.ghost.style.top = (a - minH * 60) / 60 * HOUR_PX + "px";
+  dragCtx.ghost.style.height = (b - a) / 60 * HOUR_PX + "px";
+  dragCtx.ghost.textContent = `${minToTime(a)}–${minToTime(b)}`;
+});
+function endDrag(commit) {
+  if (!dragCtx) return;
+  const ctx = dragCtx;
+  dragCtx = null;
+  if (ctx.ghost) ctx.ghost.remove();
+  if (!commit) return;
+  let s, en;
+  if (ctx.moved && ctx.range) {
+    [s, en] = ctx.range;
+  } else {
+    s = Math.floor(ctx.m0 / SNAP_MIN) * SNAP_MIN;  // クリックは1時間枠
+    en = s + 60;
+  }
+  s = Math.max(0, s);
+  en = Math.min(24 * 60, en);
+  if (en <= s) return;
+  openVisitDialog(null, ctx.date, minToTime(s), minToTime(en));
+}
+document.getElementById("calendar").addEventListener("pointerup", () => endDrag(true));
+document.getElementById("calendar").addEventListener("pointercancel", () => endDrag(false));
 
 /* --- toolbar nav --- */
 document.getElementById("btn-prev").addEventListener("click", () => shift(-1));
@@ -665,7 +941,7 @@ function fillSelect(sel, items, selectedId, placeholder) {
     items.map(i => `<option value="${i.id}" ${i.id === selectedId ? "selected" : ""}>${escapeHtml(i.name)}</option>`).join("");
 }
 
-function openVisitDialog(visit, presetDate) {
+function openVisitDialog(visit, presetDate, presetStart, presetEnd) {
   if (!state.patients.length || !state.nurses.length) {
     alert("先にスタッフと利用者を登録してください。");
     return;
@@ -675,8 +951,8 @@ function openVisitDialog(visit, presetDate) {
   fillSelect(document.getElementById("v-patient"), state.patients, visit?.patientId, "選択してください");
   fillSelect(document.getElementById("v-nurse"), state.nurses, visit?.nurseId, "選択してください");
   document.getElementById("v-date").value = visit ? visit.date : (presetDate || fmtDate(ui.anchor));
-  document.getElementById("v-start").value = visit?.start || "09:00";
-  document.getElementById("v-end").value = visit?.end || "10:00";
+  document.getElementById("v-start").value = visit?.start || presetStart || "09:00";
+  document.getElementById("v-end").value = visit?.end || presetEnd || "10:00";
   document.getElementById("v-memo").value = visit?.memo || "";
   document.getElementById("v-repeat").checked = false;
   document.getElementById("repeat-section").style.display = visit ? "none" : "";
@@ -966,6 +1242,7 @@ function renderAll() {
   renderPatientList();
   renderDataStats();
 }
+initSettingsUI();
 renderAll();
 </script>
 </body>
