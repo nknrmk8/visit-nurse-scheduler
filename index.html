@@ -129,11 +129,34 @@
     font-size: 12.5px; font-weight: 600;
     text-align: center; white-space: nowrap;
   }
+  .tg-dayhead .dh-top { display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .day-num.holiday-red { color: #dc2626; }
   .tg-dayhead.today { background: #eff6ff; }
   .tg-dayhead.today .day-num {
     background: var(--primary); color: #fff;
     border-radius: 999px; padding: 1px 7px;
   }
+  .holiday-label {
+    background: #f1f3f5; color: #dc2626;
+    font-size: 10px; font-weight: 400;
+    border-radius: 4px; padding: 0 4px; margin: 2px 2px 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .allday-zone {
+    display: flex; flex-direction: column; gap: 2px;
+    min-height: 12px; padding: 2px 2px 3px;
+    cursor: pointer;
+  }
+  .allday-zone:hover { background: rgba(0,0,0,.03); }
+  .allday-ev {
+    border: none; text-align: left;
+    background: #e5e9ec; color: #374151;
+    font-size: 10px; font-weight: 400;
+    border-radius: 4px; padding: 1px 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .allday-ev:hover { background: #d8dee3; }
   .tg-gutter {
     position: sticky; left: 0; z-index: 4;
     background: var(--card);
@@ -202,6 +225,10 @@
   .month-cell.other { opacity: .45; }
   .month-cell.today { border-color: var(--primary); border-width: 2px; }
   .month-cell .m-date { font-weight: 600; margin-bottom: 3px; }
+  .m-date.sun-red { color: #dc2626; }
+  .m-date.sat-blue { color: #2563eb; }
+  .month-cell .holiday-label { margin: 0 0 2px; }
+  .m-pill.allday { background: #e5e9ec; color: #374151; }
   .m-pill {
     border-radius: 4px; padding: 1px 5px; margin-bottom: 2px;
     font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -450,6 +477,28 @@
   </form>
 </dialog>
 
+<!-- ============ all-day event dialog ============ -->
+<dialog id="event-dialog">
+  <form method="dialog">
+    <div class="dlg-head" id="event-dlg-title">終日イベントを追加</div>
+    <div class="dlg-body">
+      <div class="field">
+        <label>日付 *</label>
+        <input type="date" id="e-date">
+      </div>
+      <div class="field">
+        <label>内容 *</label>
+        <input type="text" id="e-text" placeholder="例：スタッフ会議、休業日">
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn danger" id="e-delete" style="margin-right:auto;">削除</button>
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="button" class="btn primary" id="e-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- ============ nurse dialog ============ -->
 <dialog id="nurse-dialog">
   <form method="dialog">
@@ -508,10 +557,13 @@ function loadState() {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (Array.isArray(d.nurses) && Array.isArray(d.patients) && Array.isArray(d.visits)) return d;
+      if (Array.isArray(d.nurses) && Array.isArray(d.patients) && Array.isArray(d.visits)) {
+        if (!Array.isArray(d.events)) d.events = [];  // 旧データ互換
+        return d;
+      }
     }
   } catch (e) { /* fall through */ }
-  return { nurses: [], patients: [], visits: [] };
+  return { nurses: [], patients: [], visits: [], events: [] };
 }
 function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
@@ -596,6 +648,60 @@ function visitsOn(dateStr) {
   return state.visits
     .filter(v => v.date === dateStr && !ui.hiddenNurses.has(v.nurseId))
     .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+}
+function eventsOn(dateStr) {
+  return state.events.filter(e => e.date === dateStr);
+}
+
+/* ================= 日本の祝日 ================= */
+// 祝日法に基づく計算（春分・秋分は2000〜2099年の近似式、振替休日・国民の休日対応）
+const holidayCache = {};
+function holidaysOfYear(y) {
+  if (holidayCache[y]) return holidayCache[y];
+  const map = new Map();
+  const add = (m, d, name) => map.set(fmtDate(new Date(y, m - 1, d)), name);
+  const nthMon = (m, n) => {
+    const firstDow = new Date(y, m - 1, 1).getDay();
+    return 1 + ((8 - firstDow) % 7) + (n - 1) * 7;
+  };
+  add(1, 1, "元日");
+  add(1, nthMon(1, 2), "成人の日");
+  add(2, 11, "建国記念の日");
+  add(2, 23, "天皇誕生日");
+  add(3, Math.floor(20.69115 + 0.242194 * (y - 2000) - Math.floor((y - 2000) / 4)), "春分の日");
+  add(4, 29, "昭和の日");
+  add(5, 3, "憲法記念日");
+  add(5, 4, "みどりの日");
+  add(5, 5, "こどもの日");
+  add(7, nthMon(7, 3), "海の日");
+  add(8, 11, "山の日");
+  add(9, nthMon(9, 3), "敬老の日");
+  add(9, Math.floor(23.09 + 0.242194 * (y - 2000) - Math.floor((y - 2000) / 4)), "秋分の日");
+  add(10, nthMon(10, 2), "スポーツの日");
+  add(11, 3, "文化の日");
+  add(11, 23, "勤労感謝の日");
+  // 振替休日：祝日が日曜なら、直後の祝日でない日
+  for (const ds of [...map.keys()]) {
+    const d = parseDate(ds);
+    if (d.getDay() === 0) {
+      let n = addDays(d, 1);
+      while (map.has(fmtDate(n))) n = addDays(n, 1);
+      map.set(fmtDate(n), "振替休日");
+    }
+  }
+  // 国民の休日：前後を祝日に挟まれた平日
+  for (const ds of [...map.keys()]) {
+    const base = parseDate(ds);
+    const between = addDays(base, 1);
+    if (map.has(fmtDate(addDays(base, 2))) && !map.has(fmtDate(between)) && between.getDay() !== 0) {
+      map.set(fmtDate(between), "国民の休日");
+    }
+  }
+  holidayCache[y] = map;
+  return map;
+}
+function holidayName(ds) {
+  return holidaysOfYear(Number(ds.slice(0, 4))).get(ds) || null;
 }
 
 /* ================= UI state ================= */
@@ -697,8 +803,15 @@ function timeGridHtml(startDate, numDays) {
   let html = `<div class="tg-wrap" data-minhour="${minH}"><div class="tg ${numDays === 1 ? "cols-1" : ""}"><div class="tg-corner"></div>`;
   for (const { d, ds } of days) {
     const dowCls = d.getDay() === 0 ? "sun" : d.getDay() === 6 ? "sat" : "";
+    const holiday = holidayName(ds);
+    const red = (d.getDay() === 0 || holiday) ? "holiday-red" : "";
+    const evs = eventsOn(ds);
     html += `<div class="tg-dayhead ${ds === today ? "today" : ""}">
-      <span class="day-num">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span><button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>
+      <div class="dh-top"><span class="day-num ${red}">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span><button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button></div>
+      ${holiday ? `<div class="holiday-label" title="${escapeHtml(holiday)}">${escapeHtml(holiday)}</div>` : ""}
+      <div class="allday-zone" data-date="${ds}" title="クリックで終日イベントを追加">
+        ${evs.map(ev => `<button type="button" class="allday-ev" data-evid="${ev.id}" title="${escapeHtml(ev.text)}">${escapeHtml(ev.text)}</button>`).join("")}
+      </div>
     </div>`;
   }
   html += `<div class="tg-gutter" style="height:${totalH}px">`;
@@ -780,15 +893,20 @@ function renderSchedule() {
     const y = ui.anchor.getFullYear(), m = ui.anchor.getMonth();
     label.textContent = `${y}年${m + 1}月`;
     const first = mondayOf(new Date(y, m, 1));
-    let html = `<div class="month-head">${["月","火","水","木","金","土","日"].map(d => `<div>${d}</div>`).join("")}</div><div class="month-grid">`;
+    let html = `<div class="month-head">${["月","火","水","木","金"].map(d => `<div>${d}</div>`).join("")}<div><span class="dow sat">土</span></div><div><span class="dow sun">日</span></div></div><div class="month-grid">`;
     for (let i = 0; i < 42; i++) {
       const d = addDays(first, i);
       if (i === 35 && d.getMonth() !== m) break;
       const ds = fmtDate(d);
       const vs = visitsOn(ds);
       const shown = vs.slice(0, 3);
+      const holiday = holidayName(ds);
+      const dateCls = (d.getDay() === 0 || holiday) ? "sun-red" : d.getDay() === 6 ? "sat-blue" : "";
+      const evs = eventsOn(ds);
       html += `<div class="month-cell ${d.getMonth() !== m ? "other" : ""} ${ds === today ? "today" : ""}" data-date="${ds}">
-        <div class="m-date">${d.getDate()}</div>
+        <div class="m-date ${dateCls}">${d.getDate()}</div>
+        ${holiday ? `<div class="holiday-label" title="${escapeHtml(holiday)}">${escapeHtml(holiday)}</div>` : ""}
+        ${evs.map(ev => `<div class="m-pill allday" title="${escapeHtml(ev.text)}">${escapeHtml(ev.text)}</div>`).join("")}
         ${shown.map(v => {
           const c = nurseColor(v.nurseId);
           return `<div class="m-pill" style="background:${c};color:${contrastText(c)}">${v.start || ""} ${escapeHtml(patientName(v.patientId))}</div>`;
@@ -803,6 +921,14 @@ function renderSchedule() {
 document.getElementById("calendar").addEventListener("click", e => {
   const add = e.target.closest(".day-add");
   if (add) { openVisitDialog(null, add.dataset.date); return; }
+  const aev = e.target.closest(".allday-ev[data-evid]");
+  if (aev) {
+    const ev = state.events.find(x => x.id === aev.dataset.evid);
+    if (ev) openEventDialog(ev);
+    return;
+  }
+  const zone = e.target.closest(".allday-zone[data-date]");
+  if (zone) { openEventDialog(null, zone.dataset.date); return; }
   const card = e.target.closest(".tg-ev[data-id]");
   if (card) {
     const v = state.visits.find(x => x.id === card.dataset.id);
@@ -811,6 +937,40 @@ document.getElementById("calendar").addEventListener("click", e => {
   }
   const cell = e.target.closest(".month-cell[data-date]");
   if (cell) { ui.anchor = parseDate(cell.dataset.date); ui.view = "day"; renderSchedule(); }
+});
+
+/* ================= all-day event dialog ================= */
+const eventDlg = document.getElementById("event-dialog");
+let editingEventId = null;
+
+function openEventDialog(ev, presetDate) {
+  editingEventId = ev ? ev.id : null;
+  document.getElementById("event-dlg-title").textContent = ev ? "終日イベントを編集" : "終日イベントを追加";
+  document.getElementById("e-date").value = ev ? ev.date : (presetDate || fmtDate(ui.anchor));
+  document.getElementById("e-text").value = ev?.text || "";
+  document.getElementById("e-delete").style.display = ev ? "" : "none";
+  eventDlg.showModal();
+}
+document.getElementById("e-save").addEventListener("click", () => {
+  const date = document.getElementById("e-date").value;
+  const text = document.getElementById("e-text").value.trim();
+  if (!date || !text) { alert("日付と内容を入力してください。"); return; }
+  if (editingEventId) {
+    Object.assign(state.events.find(x => x.id === editingEventId), { date, text });
+  } else {
+    state.events.push({ id: uuid(), date, text });
+  }
+  saveState();
+  eventDlg.close();
+  renderAll();
+});
+document.getElementById("e-delete").addEventListener("click", () => {
+  if (!editingEventId) return;
+  if (!confirm("この終日イベントを削除しますか？")) return;
+  state.events = state.events.filter(x => x.id !== editingEventId);
+  saveState();
+  eventDlg.close();
+  renderAll();
 });
 
 /* --- drag to create (week time grid) --- */
@@ -1131,7 +1291,7 @@ document.getElementById("patient-list").addEventListener("click", e => {
 /* ================= data tab ================= */
 function renderDataStats() {
   document.getElementById("data-stats").textContent =
-    `スタッフ ${state.nurses.length}名 ／ 利用者 ${state.patients.length}名 ／ 予定 ${state.visits.length}件`;
+    `スタッフ ${state.nurses.length}名 ／ 利用者 ${state.patients.length}名 ／ 予定 ${state.visits.length}件 ／ 終日イベント ${state.events.length}件`;
 }
 document.getElementById("btn-export").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -1149,6 +1309,7 @@ document.getElementById("import-file").addEventListener("change", e => {
     try {
       const d = JSON.parse(reader.result);
       if (!Array.isArray(d.nurses) || !Array.isArray(d.patients) || !Array.isArray(d.visits)) throw new Error("bad format");
+      if (!Array.isArray(d.events)) d.events = [];  // 旧バックアップ互換
       if (!confirm(`インポートすると現在のデータは上書きされます。よろしいですか？\n（スタッフ${d.nurses.length}名／利用者${d.patients.length}名／予定${d.visits.length}件）`)) return;
       state = d;
       saveState();
@@ -1164,7 +1325,7 @@ document.getElementById("import-file").addEventListener("change", e => {
 document.getElementById("btn-clear").addEventListener("click", () => {
   if (!confirm("すべてのデータを削除します。よろしいですか？")) return;
   if (!confirm("本当に削除しますか？この操作は元に戻せません。")) return;
-  state = { nurses: [], patients: [], visits: [] };
+  state = { nurses: [], patients: [], visits: [], events: [] };
   saveState();
   renderAll();
 });
@@ -1198,6 +1359,10 @@ document.getElementById("btn-sample").addEventListener("click", () => {
       { id: uuid(), patientId: p3, nurseId: n1, date: d(3), start: "13:00", end: "14:00", memo: "処置" },
       { id: uuid(), patientId: p2, nurseId: n2, date: d(4), start: "10:30", end: "11:30", memo: "リハビリ" },
       { id: uuid(), patientId: p4, nurseId: n3, date: d(4), start: "15:00", end: "16:00", memo: "" },
+    ],
+    events: [
+      { id: uuid(), date: d(2), text: "スタッフ会議 17:30〜" },
+      { id: uuid(), date: d(5), text: "研修（外部）" },
     ],
   };
   saveState();
