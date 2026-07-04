@@ -114,6 +114,7 @@
     display: grid;
     grid-template-columns: 50px repeat(7, minmax(96px, 1fr));
   }
+  .tg.cols-1 { grid-template-columns: 50px 1fr; }
   .tg-corner {
     position: sticky; top: 0; left: 0; z-index: 7;
     background: #fafbfc;
@@ -185,25 +186,7 @@
     width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
   }
 
-  .visit {
-    border-left: 4px solid var(--c, #9ca3af);
-    border-radius: 6px;
-    padding: 5px 7px;
-    font-size: 12.5px;
-    cursor: pointer;
-    line-height: 1.45;
-  }
-  .visit:hover { filter: brightness(.96); }
-  .visit .v-time { font-weight: 700; margin-right: 4px; }
-  .visit .v-patient { font-weight: 600; }
-  .visit .v-nurse {
-    display: inline-block; margin-top: 2px;
-    font-size: 11px; padding: 1px 8px; border-radius: 999px;
-  }
-
-  /* ---------- day view ---------- */
-  .day-list { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
-  .day-list .visit { font-size: 15px; padding: 10px 12px; background: var(--card); box-shadow: var(--shadow); }
+  /* ---------- empty note ---------- */
   .empty-note { color: var(--muted); padding: 24px; text-align: center; background: var(--card); border-radius: var(--radius); border: 1px dashed var(--border); }
 
   /* ---------- month grid ---------- */
@@ -297,10 +280,11 @@
   @media (max-width: 768px) {
     body { font-size: 14px; }
     .tg { grid-template-columns: 40px repeat(7, minmax(84px, 1fr)); }
+    .tg.cols-1 { grid-template-columns: 40px 1fr; }
     .tg-wrap { max-height: calc(100vh - 215px); }
     .tg-hour { font-size: 9.5px; right: 2px; }
     .tg-ev { font-size: 10px; padding: 0 3px; }
-    .visit { font-size: 14px; padding: 8px 10px; }
+    .tg.cols-1 .tg-ev { font-size: 12px; padding: 1px 4px; }
     .month-cell { min-height: 64px; }
     .m-pill { font-size: 9px; padding: 1px 2px; }
     .toolbar .btn, .view-switch button { padding: 8px 10px; }
@@ -404,8 +388,8 @@
       </select>
     </div>
     <div class="data-card">
-      <h3>週表示の時間帯</h3>
-      <p>週表示の縦軸（時間軸）に表示する範囲です。範囲外に予定がある週は自動的に広がって表示されるので、予定が隠れることはありません。</p>
+      <h3>日・週表示の時間帯</h3>
+      <p>日表示・週表示の縦軸（時間軸）に表示する範囲です。範囲外に予定がある場合は自動的に広がって表示されるので、予定が隠れることはありません。</p>
       <div style="display:flex;gap:8px;align-items:center;">
         <select id="set-start-hour" class="set-select"></select>
         <span>〜</span>
@@ -620,7 +604,7 @@ const ui = {
   view: settings.defaultView,
   anchor: new Date(),        // day currently in focus
   hiddenNurses: new Set(),   // nurse ids filtered out
-  weekScroll: null,          // 週表示のスクロール位置（ユーザー操作で更新）
+  gridScroll: null,          // 時間グリッド（日・週）のスクロール位置（ユーザー操作で更新）
 };
 
 /* ================= tabs ================= */
@@ -687,13 +671,14 @@ function layoutDay(vs) {
   return evs;
 }
 
-function weekGridHtml(mon) {
+// 日・週共通の時間グリッド（numDays=1 で日表示、7 で週表示）
+function timeGridHtml(startDate, numDays) {
   const today = todayStr();
   const days = [];
   // 設定の時間帯をベースに、範囲外の予定があれば自動で広げる
   let minH = settings.weekStartHour, maxH = settings.weekEndHour;
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(mon, i);
+  for (let i = 0; i < numDays; i++) {
+    const d = addDays(startDate, i);
     const ds = fmtDate(d);
     const vs = visitsOn(ds);
     for (const v of vs) {
@@ -709,7 +694,7 @@ function weekGridHtml(mon) {
   const totalH = (maxH - minH) * HOUR_PX;
   const lineBg = `repeating-linear-gradient(to bottom, #edf0f3 0, #edf0f3 1px, transparent 1px, transparent ${HOUR_PX}px)`;
 
-  let html = `<div class="tg-wrap" data-minhour="${minH}"><div class="tg"><div class="tg-corner"></div>`;
+  let html = `<div class="tg-wrap" data-minhour="${minH}"><div class="tg ${numDays === 1 ? "cols-1" : ""}"><div class="tg-corner"></div>`;
   for (const { d, ds } of days) {
     const dowCls = d.getDay() === 0 ? "sun" : d.getDay() === 6 ? "sat" : "";
     html += `<div class="tg-dayhead ${ds === today ? "today" : ""}">
@@ -748,16 +733,19 @@ function weekGridHtml(mon) {
   return html + `</div></div>`;
 }
 
-function visitCardHtml(v, compact) {
-  const c = nurseColor(v.nurseId);
-  const bg = hexToRgba(c, 0.13);
-  const memo = v.memo ? ` title="${escapeHtml(v.memo)}"` : "";
-  return `<div class="visit" data-id="${v.id}" style="--c:${c};background:${bg}"${memo}>
-    <span class="v-time">${v.start || ""}${v.end ? "–" + v.end : ""}</span>
-    <span class="v-patient">${escapeHtml(patientName(v.patientId))}</span><br>
-    <span class="v-nurse" style="background:${c};color:${contrastText(c)}">${escapeHtml(nurseName(v.nurseId))}</span>
-    ${!compact && v.memo ? `<span style="color:var(--muted);font-size:11.5px;"> ${escapeHtml(v.memo)}</span>` : ""}
-  </div>`;
+// 時間グリッドの描画＋スクロール位置の管理（日・週共通）
+function renderTimeGrid(cal, startDate, numDays) {
+  cal.innerHTML = timeGridHtml(startDate, numDays);
+  const wrap = cal.querySelector(".tg-wrap");
+  if (ui.gridScroll) {
+    wrap.scrollTop = ui.gridScroll.t;
+    wrap.scrollLeft = ui.gridScroll.l;
+  } else {
+    // 初回は8時付近を表示
+    wrap.scrollTop = Math.max(0, (8 - Number(wrap.dataset.minhour)) * HOUR_PX);
+  }
+  // 非表示タブ中の描画では scrollTop 代入が効かないため、実際にスクロールできた時だけ記憶する
+  wrap.addEventListener("scroll", () => { ui.gridScroll = { t: wrap.scrollTop, l: wrap.scrollLeft }; });
 }
 
 function renderSchedule() {
@@ -781,26 +769,12 @@ function renderSchedule() {
     const sun = addDays(mon, 6);
     label.textContent = `${mon.getFullYear()}年${mon.getMonth() + 1}月${mon.getDate()}日〜` +
       (mon.getMonth() === sun.getMonth() ? `${sun.getDate()}日` : `${sun.getMonth() + 1}月${sun.getDate()}日`);
-    // 再描画時はスクロール位置を保持、初回は8時付近を表示
-    cal.innerHTML = weekGridHtml(mon);
-    const wrap = cal.querySelector(".tg-wrap");
-    if (ui.weekScroll) {
-      wrap.scrollTop = ui.weekScroll.t;
-      wrap.scrollLeft = ui.weekScroll.l;
-    } else {
-      wrap.scrollTop = Math.max(0, (8 - Number(wrap.dataset.minhour)) * HOUR_PX);
-    }
-    // 非表示タブ中の描画では scrollTop 代入が効かないため、実際にスクロールできた時だけ記憶する
-    wrap.addEventListener("scroll", () => { ui.weekScroll = { t: wrap.scrollTop, l: wrap.scrollLeft }; });
+    renderTimeGrid(cal, mon, 7);
 
   } else if (ui.view === "day") {
     const d = ui.anchor;
-    const ds = fmtDate(d);
     label.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 (${DOW[d.getDay()]})`;
-    const vs = visitsOn(ds);
-    cal.innerHTML = `<div class="day-list">` +
-      (vs.length ? vs.map(v => visitCardHtml(v, false)).join("") : `<div class="empty-note">この日の予定はありません</div>`) +
-      `</div>`;
+    renderTimeGrid(cal, d, 1);
 
   } else { // month
     const y = ui.anchor.getFullYear(), m = ui.anchor.getMonth();
@@ -829,7 +803,7 @@ function renderSchedule() {
 document.getElementById("calendar").addEventListener("click", e => {
   const add = e.target.closest(".day-add");
   if (add) { openVisitDialog(null, add.dataset.date); return; }
-  const card = e.target.closest(".visit[data-id], .tg-ev[data-id]");
+  const card = e.target.closest(".tg-ev[data-id]");
   if (card) {
     const v = state.visits.find(x => x.id === card.dataset.id);
     if (v) openVisitDialog(v);
