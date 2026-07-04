@@ -302,6 +302,7 @@
     border: 1px solid var(--border); border-radius: 8px;
     font-size: 15px; font-family: inherit; background: #fff;
   }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
   /* ---------- mobile ---------- */
   @media (max-width: 768px) {
@@ -381,13 +382,31 @@
       <p>データはこのブラウザ内（localStorage）に保存されます。別の端末と共有する場合はエクスポート／インポートを使ってください。</p>
     </div>
     <div class="data-card">
-      <h3>バックアップ（エクスポート）</h3>
-      <p>すべてのデータをJSONファイルとしてダウンロードします。</p>
+      <h3>スタッフのエクスポート／インポート</h3>
+      <p>CSVの1行目はヘッダー（名前,事業所,役職,備考,カラー）です。インポートは名前が一致するスタッフを更新し、新しい名前を追加します（削除はされません）。Excelで保存したCSV（Shift_JIS）も読み込めます。</p>
+      <div class="btn-row">
+        <button class="btn primary" id="btn-nurse-csv">CSVエクスポート</button>
+        <button class="btn" id="btn-nurse-json">JSONエクスポート</button>
+        <input type="file" id="nurse-import-file" accept=".csv,.json">
+      </div>
+    </div>
+    <div class="data-card">
+      <h3>利用者のエクスポート／インポート</h3>
+      <p>CSVの1行目はヘッダー（名前,訪問先,備考）です。インポートは名前が一致する利用者を更新し、新しい名前を追加します（削除はされません）。</p>
+      <div class="btn-row">
+        <button class="btn primary" id="btn-patient-csv">CSVエクスポート</button>
+        <button class="btn" id="btn-patient-json">JSONエクスポート</button>
+        <input type="file" id="patient-import-file" accept=".csv,.json">
+      </div>
+    </div>
+    <div class="data-card">
+      <h3>全データのバックアップ（エクスポート）</h3>
+      <p>スタッフ・利用者・予定・終日イベントのすべてをJSONファイルとしてダウンロードします。</p>
       <button class="btn primary" id="btn-export">エクスポート</button>
     </div>
     <div class="data-card">
-      <h3>復元（インポート）</h3>
-      <p>エクスポートしたJSONファイルを読み込みます。現在のデータは上書きされます。</p>
+      <h3>全データの復元（インポート）</h3>
+      <p>バックアップしたJSONファイルを読み込みます。現在のデータは上書きされます。</p>
       <input type="file" id="import-file" accept=".json,application/json">
     </div>
     <div class="data-card">
@@ -508,6 +527,20 @@
         <label>名前 *</label>
         <input type="text" id="n-name" placeholder="例：佐藤">
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>事業所</label>
+          <input type="text" id="n-office" placeholder="例：中央事業所">
+        </div>
+        <div class="field">
+          <label>役職</label>
+          <input type="text" id="n-title" placeholder="例：看護師">
+        </div>
+      </div>
+      <div class="field">
+        <label>備考</label>
+        <textarea id="n-note" rows="2" placeholder="連絡事項など"></textarea>
+      </div>
       <div class="field">
         <label>担当カラー（好きな色を何色でも使えます）</label>
         <div class="palette" id="n-palette"></div>
@@ -534,8 +567,12 @@
         <input type="text" id="p-name" placeholder="例：山田 花子">
       </div>
       <div class="field">
-        <label>メモ（住所・注意事項など）</label>
-        <textarea id="p-memo" rows="3"></textarea>
+        <label>訪問先</label>
+        <input type="text" id="p-address" placeholder="例：青葉区○○1-2-3 / ○○ホーム101号">
+      </div>
+      <div class="field">
+        <label>備考</label>
+        <textarea id="p-note" rows="3" placeholder="注意事項など"></textarea>
       </div>
     </div>
     <div class="dlg-foot">
@@ -552,14 +589,29 @@
 const LS_KEY = "vns_data_v1";
 let state = loadState();
 
+// 旧バージョンのデータ・バックアップを現行形式に揃える
+function normalizeState(d) {
+  if (!Array.isArray(d.events)) d.events = [];
+  for (const n of d.nurses) {
+    n.office = n.office || "";
+    n.title = n.title || "";
+    n.note = n.note || "";
+  }
+  for (const p of d.patients) {
+    p.address = p.address || "";
+    if (p.memo != null) { p.note = p.note || p.memo; delete p.memo; }  // 旧「メモ」→「備考」
+    p.note = p.note || "";
+  }
+  return d;
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const d = JSON.parse(raw);
       if (Array.isArray(d.nurses) && Array.isArray(d.patients) && Array.isArray(d.visits)) {
-        if (!Array.isArray(d.events)) d.events = [];  // 旧データ互換
-        return d;
+        return normalizeState(d);
       }
     }
   } catch (e) { /* fall through */ }
@@ -636,6 +688,51 @@ function contrastText(hex) {
   const n = parseInt(m[1], 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#1f2937" : "#fff";
+}
+
+/* ---------- CSV / file helpers ---------- */
+function toCSV(rows) {
+  // BOM付きUTF-8（Excelで文字化けしないように）
+  return "﻿" + rows.map(r => r.map(c => {
+    c = String(c ?? "");
+    return /[",\r\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
+  }).join(",")).join("\r\n");
+}
+function parseCSV(text) {
+  text = text.replace(/^﻿/, "");
+  const rows = [];
+  let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ",") { row.push(field); field = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+    } else field += ch;
+  }
+  if (field !== "" || row.length) { row.push(field); if (row.length > 1 || row[0] !== "") rows.push(row); }
+  return rows;
+}
+async function readTextFile(file) {
+  // Excel保存のShift_JIS CSVにも対応（UTF-8で文字化けしたらShift_JISで再デコード）
+  const buf = await file.arrayBuffer();
+  const utf8 = new TextDecoder("utf-8").decode(buf);
+  if (!utf8.includes("�")) return utf8;
+  try { return new TextDecoder("shift_jis").decode(buf); } catch (e) { return utf8; }
+}
+function downloadFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 const getNurse = id => state.nurses.find(n => n.id === id);
@@ -1164,6 +1261,9 @@ function openNurseDialog(nurse) {
   editingNurseId = nurse ? nurse.id : null;
   document.getElementById("nurse-dlg-title").textContent = nurse ? "スタッフを編集" : "スタッフを追加";
   document.getElementById("n-name").value = nurse?.name || "";
+  document.getElementById("n-office").value = nurse?.office || "";
+  document.getElementById("n-title").value = nurse?.title || "";
+  document.getElementById("n-note").value = nurse?.note || "";
   selectedColor = nurse?.color || nextFreeColor();
   document.getElementById("n-custom-color").value = /^#[0-9a-f]{6}$/i.test(selectedColor) ? selectedColor : "#2563eb";
   renderPalette();
@@ -1173,11 +1273,14 @@ document.getElementById("btn-add-nurse").addEventListener("click", () => openNur
 
 document.getElementById("n-save").addEventListener("click", () => {
   const name = document.getElementById("n-name").value.trim();
+  const office = document.getElementById("n-office").value.trim();
+  const title = document.getElementById("n-title").value.trim();
+  const note = document.getElementById("n-note").value.trim();
   if (!name) { alert("名前を入力してください。"); return; }
   if (editingNurseId) {
-    Object.assign(state.nurses.find(n => n.id === editingNurseId), { name, color: selectedColor });
+    Object.assign(state.nurses.find(n => n.id === editingNurseId), { name, color: selectedColor, office, title, note });
   } else {
-    state.nurses.push({ id: uuid(), name, color: selectedColor });
+    state.nurses.push({ id: uuid(), name, color: selectedColor, office, title, note });
   }
   saveState();
   nurseDlg.close();
@@ -1192,11 +1295,12 @@ function renderNurseList() {
   }
   el.innerHTML = state.nurses.map(n => {
     const count = state.visits.filter(v => v.nurseId === n.id && v.date >= todayStr()).length;
+    const sub = [n.office, n.title, n.note].filter(Boolean).join("・");
     return `<div class="item-card">
       <div class="swatch" style="background:${n.color}"></div>
       <div class="info">
         <div class="name">${escapeHtml(n.name)}</div>
-        <div class="sub">今後の予定 ${count}件</div>
+        <div class="sub">${escapeHtml(sub)}${sub ? "　" : ""}今後の予定 ${count}件</div>
       </div>
       <div class="actions">
         <button class="btn small" data-edit-nurse="${n.id}">編集</button>
@@ -1231,19 +1335,21 @@ function openPatientDialog(p) {
   editingPatientId = p ? p.id : null;
   document.getElementById("patient-dlg-title").textContent = p ? "利用者を編集" : "利用者を追加";
   document.getElementById("p-name").value = p?.name || "";
-  document.getElementById("p-memo").value = p?.memo || "";
+  document.getElementById("p-address").value = p?.address || "";
+  document.getElementById("p-note").value = p?.note || "";
   patientDlg.showModal();
 }
 document.getElementById("btn-add-patient").addEventListener("click", () => openPatientDialog(null));
 
 document.getElementById("p-save").addEventListener("click", () => {
   const name = document.getElementById("p-name").value.trim();
-  const memo = document.getElementById("p-memo").value.trim();
+  const address = document.getElementById("p-address").value.trim();
+  const note = document.getElementById("p-note").value.trim();
   if (!name) { alert("名前を入力してください。"); return; }
   if (editingPatientId) {
-    Object.assign(state.patients.find(p => p.id === editingPatientId), { name, memo });
+    Object.assign(state.patients.find(p => p.id === editingPatientId), { name, address, note });
   } else {
-    state.patients.push({ id: uuid(), name, memo });
+    state.patients.push({ id: uuid(), name, address, note });
   }
   saveState();
   patientDlg.close();
@@ -1258,10 +1364,11 @@ function renderPatientList() {
   }
   el.innerHTML = state.patients.map(p => {
     const count = state.visits.filter(v => v.patientId === p.id && v.date >= todayStr()).length;
+    const sub = [p.address, p.note].filter(Boolean).join("・");
     return `<div class="item-card">
       <div class="info">
         <div class="name">${escapeHtml(p.name)}</div>
-        <div class="sub">${escapeHtml(p.memo || "")}　今後の予定 ${count}件</div>
+        <div class="sub">${escapeHtml(sub)}${sub ? "　" : ""}今後の予定 ${count}件</div>
       </div>
       <div class="actions">
         <button class="btn small" data-edit-patient="${p.id}">編集</button>
@@ -1309,9 +1416,8 @@ document.getElementById("import-file").addEventListener("change", e => {
     try {
       const d = JSON.parse(reader.result);
       if (!Array.isArray(d.nurses) || !Array.isArray(d.patients) || !Array.isArray(d.visits)) throw new Error("bad format");
-      if (!Array.isArray(d.events)) d.events = [];  // 旧バックアップ互換
       if (!confirm(`インポートすると現在のデータは上書きされます。よろしいですか？\n（スタッフ${d.nurses.length}名／利用者${d.patients.length}名／予定${d.visits.length}件）`)) return;
-      state = d;
+      state = normalizeState(d);  // 旧バックアップ互換
       saveState();
       renderAll();
       alert("インポートしました。");
@@ -1322,6 +1428,116 @@ document.getElementById("import-file").addEventListener("change", e => {
   };
   reader.readAsText(file);
 });
+/* --- スタッフ／利用者の個別エクスポート・インポート --- */
+const NURSE_CSV_HEADER = ["名前", "事業所", "役職", "備考", "カラー"];
+const PATIENT_CSV_HEADER = ["名前", "訪問先", "備考"];
+const isHexColor = c => /^#[0-9a-f]{6}$/i.test(c || "");
+
+document.getElementById("btn-nurse-csv").addEventListener("click", () => {
+  const rows = [NURSE_CSV_HEADER, ...state.nurses.map(n => [n.name, n.office, n.title, n.note, n.color])];
+  downloadFile(`houkan-staff-${todayStr()}.csv`, toCSV(rows), "text/csv;charset=utf-8");
+});
+document.getElementById("btn-patient-csv").addEventListener("click", () => {
+  const rows = [PATIENT_CSV_HEADER, ...state.patients.map(p => [p.name, p.address, p.note])];
+  downloadFile(`houkan-patients-${todayStr()}.csv`, toCSV(rows), "text/csv;charset=utf-8");
+});
+document.getElementById("btn-nurse-json").addEventListener("click", () => {
+  downloadFile(`houkan-staff-${todayStr()}.json`, JSON.stringify({ nurses: state.nurses }, null, 2), "application/json");
+});
+document.getElementById("btn-patient-json").addEventListener("click", () => {
+  downloadFile(`houkan-patients-${todayStr()}.json`, JSON.stringify({ patients: state.patients }, null, 2), "application/json");
+});
+
+// CSV行 → 取り込みアイテム（ヘッダー行の列名で対応付け）
+function itemsFromCSV(rows, columns) {
+  if (!rows.length) throw new Error("empty");
+  const header = rows[0].map(h => h.trim());
+  const idx = {};
+  for (const [key, label] of Object.entries(columns)) idx[key] = header.indexOf(label);
+  if (idx.name === -1) throw new Error("no-name-column");
+  return rows.slice(1).map(r => {
+    const item = {};
+    for (const key of Object.keys(columns)) {
+      if (idx[key] > -1) item[key] = (r[idx[key]] || "").trim();
+    }
+    return item;
+  }).filter(item => item.name);
+}
+
+// 既存リストへ統合：id → 名前 の順で一致を探し、あれば更新・なければ追加（削除はしない）
+function mergeMaster(list, items, makeNew) {
+  let added = 0, updated = 0;
+  for (const item of items) {
+    const target = (item.id && list.find(x => x.id === item.id)) || list.find(x => x.name === item.name);
+    if (target) {
+      const patch = { ...item };
+      delete patch.id;
+      Object.assign(target, patch);
+      updated++;
+    } else {
+      list.push(makeNew(item));
+      added++;
+    }
+  }
+  return { added, updated };
+}
+
+async function importMaster(file, kind) {
+  const text = await readTextFile(file);
+  const trimmed = text.trim();
+  let items;
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const d = JSON.parse(trimmed);
+    const arr = Array.isArray(d) ? d : (kind === "nurse" ? d.nurses : d.patients);
+    if (!Array.isArray(arr)) throw new Error("bad-json");
+    items = arr.filter(x => x && x.name).map(x => {
+      const item = { id: x.id, name: String(x.name).trim(), note: x.note ?? x.memo ?? "" };
+      if (kind === "nurse") {
+        item.office = x.office ?? "";
+        item.title = x.title ?? "";
+        if (isHexColor(x.color)) item.color = x.color;
+      } else {
+        item.address = x.address ?? "";
+      }
+      return item;
+    });
+  } else {
+    if (kind === "nurse") {
+      items = itemsFromCSV(parseCSV(text), { name: "名前", office: "事業所", title: "役職", note: "備考", color: "カラー" });
+      for (const item of items) if (!isHexColor(item.color)) delete item.color;
+    } else {
+      items = itemsFromCSV(parseCSV(text), { name: "名前", address: "訪問先", note: "備考" });
+    }
+  }
+  if (!items.length) throw new Error("no-items");
+
+  const label = kind === "nurse" ? "スタッフ" : "利用者";
+  const list = kind === "nurse" ? state.nurses : state.patients;
+  // 事前に件数を出して確認
+  const plan = mergeMaster(JSON.parse(JSON.stringify(list)), items, x => x);
+  if (!confirm(`${label}を取り込みます：追加 ${plan.added}件・更新 ${plan.updated}件\n（既存の${label}は削除されません）よろしいですか？`)) return;
+  const makeNew = kind === "nurse"
+    ? item => ({ id: uuid(), name: item.name, color: isHexColor(item.color) ? item.color : nextFreeColor(), office: item.office || "", title: item.title || "", note: item.note || "" })
+    : item => ({ id: uuid(), name: item.name, address: item.address || "", note: item.note || "" });
+  const result = mergeMaster(list, items, makeNew);
+  saveState();
+  renderAll();
+  alert(`${label}のインポートが完了しました：追加 ${result.added}件・更新 ${result.updated}件`);
+}
+
+for (const [inputId, kind] of [["nurse-import-file", "nurse"], ["patient-import-file", "patient"]]) {
+  document.getElementById(inputId).addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      await importMaster(file, kind);
+    } catch (err) {
+      alert("ファイルの形式が正しくありません。CSVの1行目に「名前」列を含むヘッダーが必要です。");
+    }
+    e.target.value = "";
+  });
+}
+
 document.getElementById("btn-clear").addEventListener("click", () => {
   if (!confirm("すべてのデータを削除します。よろしいですか？")) return;
   if (!confirm("本当に削除しますか？この操作は元に戻せません。")) return;
@@ -1339,15 +1555,15 @@ document.getElementById("btn-sample").addEventListener("click", () => {
   const d = i => fmtDate(addDays(mon, i));
   state = {
     nurses: [
-      { id: n1, name: "佐藤", color: "#e6194b" },
-      { id: n2, name: "鈴木", color: "#4363d8" },
-      { id: n3, name: "田中", color: "#3cb44b" },
+      { id: n1, name: "佐藤", color: "#e6194b", office: "中央事業所", title: "管理者", note: "" },
+      { id: n2, name: "鈴木", color: "#4363d8", office: "中央事業所", title: "看護師", note: "" },
+      { id: n3, name: "田中", color: "#3cb44b", office: "東事業所", title: "理学療法士", note: "火曜午前は不在" },
     ],
     patients: [
-      { id: p1, name: "山田 花子", memo: "週2回・服薬管理" },
-      { id: p2, name: "高橋 一郎", memo: "リハビリ・月水金" },
-      { id: p3, name: "伊藤 幸子", memo: "褥瘡処置" },
-      { id: p4, name: "渡辺 健", memo: "バイタル確認" },
+      { id: p1, name: "山田 花子", address: "青葉区一丁目1-2", note: "週2回・服薬管理" },
+      { id: p2, name: "高橋 一郎", address: "緑区二丁目3-4", note: "リハビリ・月水金" },
+      { id: p3, name: "伊藤 幸子", address: "○○ホーム 101号室", note: "褥瘡処置" },
+      { id: p4, name: "渡辺 健", address: "青葉区三丁目5-6", note: "バイタル確認" },
     ],
     visits: [
       { id: uuid(), patientId: p1, nurseId: n1, date: d(0), start: "09:00", end: "10:00", memo: "服薬確認" },
