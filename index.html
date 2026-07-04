@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>訪問看護スケジュール</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --danger: #dc2626;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+  }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ---------- header / tabs ---------- */
+  .app-header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 20;
+    padding: 10px 16px 0;
+  }
+  .app-header h1 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .app-header h1::before { content: "🏥"; }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; }
+  .tab-btn {
+    border: none; background: none;
+    padding: 10px 14px;
+    font-size: 14px; color: var(--muted);
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+  .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 12px 12px 60px; }
+  section[id^="tab-"] { display: none; }
+  section.active { display: block; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin-bottom: 10px;
+  }
+  .toolbar .spacer { flex: 1; }
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    box-shadow: var(--shadow);
+  }
+  .btn:hover { background: #f9fafb; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { background: var(--primary-dark); }
+  .btn.danger { color: var(--danger); border-color: #fecaca; }
+  .btn.small { padding: 4px 10px; font-size: 13px; }
+  .period-label { font-weight: 700; font-size: 16px; margin: 0 4px; }
+  .view-switch { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+  .view-switch button {
+    border: none; background: none; padding: 8px 14px; font-size: 14px; color: var(--muted);
+  }
+  .view-switch button.active { background: var(--primary); color: #fff; }
+
+  /* ---------- legend ---------- */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+  .legend-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 12px; font-size: 13px; background: var(--card);
+  }
+  .chip .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .chip.off { opacity: .35; }
+
+  /* ---------- week grid ---------- */
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .day-col {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-height: 140px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .day-head {
+    padding: 6px 8px;
+    font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+    background: #fafbfc;
+  }
+  .day-head .dow { color: var(--muted); font-weight: 400; }
+  .day-head .dow.sat { color: #2563eb; }
+  .day-head .dow.sun { color: #dc2626; }
+  .day-col.today .day-head { background: #eff6ff; }
+  .day-col.today .day-num {
+    background: var(--primary); color: #fff;
+    border-radius: 50%; width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .day-add {
+    margin-left: auto; border: none; background: none; color: var(--muted);
+    font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+  }
+  .day-add:hover { background: #e5e7eb; color: var(--text); }
+  .day-events { padding: 6px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+
+  .visit {
+    border-left: 4px solid var(--c, #9ca3af);
+    border-radius: 6px;
+    padding: 5px 7px;
+    font-size: 12.5px;
+    cursor: pointer;
+    line-height: 1.45;
+  }
+  .visit:hover { filter: brightness(.96); }
+  .visit .v-time { font-weight: 700; margin-right: 4px; }
+  .visit .v-patient { font-weight: 600; }
+  .visit .v-nurse {
+    display: inline-block; margin-top: 2px;
+    font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  }
+
+  /* ---------- day view ---------- */
+  .day-list { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+  .day-list .visit { font-size: 15px; padding: 10px 12px; background: var(--card); box-shadow: var(--shadow); }
+  .empty-note { color: var(--muted); padding: 24px; text-align: center; background: var(--card); border-radius: var(--radius); border: 1px dashed var(--border); }
+
+  /* ---------- month grid ---------- */
+  .month-head, .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .month-head { margin-bottom: 4px; }
+  .month-head div { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0; }
+  .month-cell {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    min-height: 92px; padding: 4px; font-size: 12px; cursor: pointer;
+    overflow: hidden;
+  }
+  .month-cell:hover { border-color: var(--primary); }
+  .month-cell.other { opacity: .45; }
+  .month-cell.today { border-color: var(--primary); border-width: 2px; }
+  .month-cell .m-date { font-weight: 600; margin-bottom: 3px; }
+  .m-pill {
+    border-radius: 4px; padding: 1px 5px; margin-bottom: 2px;
+    font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .m-more { color: var(--muted); font-size: 11px; }
+
+  /* ---------- list pages (staff / patients) ---------- */
+  .page-head { display: flex; align-items: center; margin-bottom: 12px; gap: 10px; }
+  .page-head h2 { margin: 0; font-size: 17px; flex: 1; }
+  .item-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+  .item-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .item-card .swatch { width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; }
+  .item-card .info { flex: 1; min-width: 0; }
+  .item-card .name { font-weight: 600; }
+  .item-card .sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-card .actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ---------- dialogs ---------- */
+  dialog {
+    border: none; border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.2);
+    padding: 0;
+    width: min(440px, calc(100vw - 32px));
+  }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .dlg-head {
+    padding: 14px 18px; font-weight: 700; font-size: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dlg-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .dlg-foot {
+    padding: 12px 18px; border-top: 1px solid var(--border);
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .field input[type="text"], .field input[type="date"], .field input[type="time"],
+  .field input[type="number"], .field select, .field textarea {
+    width: 100%; padding: 9px 10px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 15px; font-family: inherit; background: #fff;
+  }
+  .field textarea { resize: vertical; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .checkbox-row input { width: 18px; height: 18px; }
+
+  .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .pal-swatch {
+    aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
+    padding: 0;
+  }
+  .pal-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px #fff inset; }
+  .custom-color-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .custom-color-row input[type="color"] { width: 44px; height: 32px; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: #fff; }
+
+  /* ---------- data tab ---------- */
+  .data-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 12px; max-width: 640px; box-shadow: var(--shadow);
+  }
+  .data-card h3 { margin: 0 0 6px; font-size: 15px; }
+  .data-card p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 768px) {
+    body { font-size: 14px; }
+    .week-grid { grid-template-columns: 1fr; }
+    .day-col { min-height: 0; }
+    .day-col.empty-day .day-events { display: none; }
+    .day-col.empty-day { opacity: .7; }
+    .visit { font-size: 14px; padding: 8px 10px; }
+    .month-cell { min-height: 64px; }
+    .m-pill { font-size: 9px; padding: 1px 2px; }
+    .toolbar .btn, .view-switch button { padding: 8px 10px; }
+    .period-label { font-size: 14px; width: 100%; order: -1; text-align: center; }
+    .item-card { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>訪問看護スケジュール</h1>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="schedule">📅 スケジュール</button>
+    <button class="tab-btn" data-tab="staff">👩‍⚕️ スタッフ</button>
+    <button class="tab-btn" data-tab="patients">🏠 利用者</button>
+    <button class="tab-btn" data-tab="data">💾 データ</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ schedule ============ -->
+  <section id="tab-schedule" class="active">
+    <div class="toolbar">
+      <button class="btn" id="btn-prev">◀</button>
+      <button class="btn" id="btn-today">今日</button>
+      <button class="btn" id="btn-next">▶</button>
+      <span class="period-label" id="period-label"></span>
+      <span class="spacer"></span>
+      <div class="view-switch" id="view-switch">
+        <button data-view="day">日</button>
+        <button data-view="week" class="active">週</button>
+        <button data-view="month">月</button>
+      </div>
+      <button class="btn" id="btn-copy-week" title="前の週の予定をこの週にコピーします">前週コピー</button>
+      <button class="btn primary" id="btn-add-visit">＋ 予定追加</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div id="calendar"></div>
+  </section>
+
+  <!-- ============ staff ============ -->
+  <section id="tab-staff">
+    <div class="page-head">
+      <h2>スタッフ管理</h2>
+      <button class="btn primary" id="btn-add-nurse">＋ スタッフ追加</button>
+    </div>
+    <div class="item-list" id="nurse-list"></div>
+  </section>
+
+  <!-- ============ patients ============ -->
+  <section id="tab-patients">
+    <div class="page-head">
+      <h2>利用者管理</h2>
+      <button class="btn primary" id="btn-add-patient">＋ 利用者追加</button>
+    </div>
+    <div class="item-list" id="patient-list"></div>
+  </section>
+
+  <!-- ============ data ============ -->
+  <section id="tab-data">
+    <div class="page-head"><h2>データ管理</h2></div>
+    <div class="data-card">
+      <h3>現在のデータ</h3>
+      <p id="data-stats"></p>
+      <p>データはこのブラウザ内（localStorage）に保存されます。別の端末と共有する場合はエクスポート／インポートを使ってください。</p>
+    </div>
+    <div class="data-card">
+      <h3>バックアップ（エクスポート）</h3>
+      <p>すべてのデータをJSONファイルとしてダウンロードします。</p>
+      <button class="btn primary" id="btn-export">エクスポート</button>
+    </div>
+    <div class="data-card">
+      <h3>復元（インポート）</h3>
+      <p>エクスポートしたJSONファイルを読み込みます。現在のデータは上書きされます。</p>
+      <input type="file" id="import-file" accept=".json,application/json">
+    </div>
+    <div class="data-card">
+      <h3>サンプルデータ</h3>
+      <p>動作確認用のサンプル（スタッフ3名・利用者4名・今週の予定）を投入します。現在のデータは上書きされます。</p>
+      <button class="btn" id="btn-sample">サンプルデータを投入</button>
+    </div>
+    <div class="data-card">
+      <h3>全データ削除</h3>
+      <p>すべてのスタッフ・利用者・予定を削除します。元に戻せません。</p>
+      <button class="btn danger" id="btn-clear">全データを削除</button>
+    </div>
+  </section>
+</main>
+
+<!-- ============ visit dialog ============ -->
+<dialog id="visit-dialog">
+  <form method="dialog">
+    <div class="dlg-head" id="visit-dlg-title">予定を追加</div>
+    <div class="dlg-body">
+      <div class="field">
+        <label>利用者 *</label>
+        <select id="v-patient"></select>
+      </div>
+      <div class="field">
+        <label>担当スタッフ *</label>
+        <select id="v-nurse"></select>
+      </div>
+      <div class="field">
+        <label>日付 *</label>
+        <input type="date" id="v-date">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>開始</label>
+          <input type="time" id="v-start" value="09:00" step="300">
+        </div>
+        <div class="field">
+          <label>終了</label>
+          <input type="time" id="v-end" value="10:00" step="300">
+        </div>
+      </div>
+      <div class="field">
+        <label>メモ</label>
+        <textarea id="v-memo" rows="2" placeholder="ケア内容・注意事項など"></textarea>
+      </div>
+      <div id="repeat-section">
+        <div class="checkbox-row">
+          <input type="checkbox" id="v-repeat">
+          <label for="v-repeat">毎週繰り返す</label>
+          <input type="number" id="v-repeat-weeks" value="4" min="2" max="26" style="width:64px;padding:6px;border:1px solid var(--border);border-radius:6px;">
+          <span style="font-size:13px;color:var(--muted);">週分</span>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn danger" id="v-delete" style="margin-right:auto;">削除</button>
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="button" class="btn primary" id="v-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ nurse dialog ============ -->
+<dialog id="nurse-dialog">
+  <form method="dialog">
+    <div class="dlg-head" id="nurse-dlg-title">スタッフを追加</div>
+    <div class="dlg-body">
+      <div class="field">
+        <label>名前 *</label>
+        <input type="text" id="n-name" placeholder="例：佐藤">
+      </div>
+      <div class="field">
+        <label>担当カラー（好きな色を何色でも使えます）</label>
+        <div class="palette" id="n-palette"></div>
+        <div class="custom-color-row" style="margin-top:8px;">
+          <input type="color" id="n-custom-color" value="#2563eb">
+          <span>カスタム色（クリックで自由に選択）</span>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="button" class="btn primary" id="n-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ patient dialog ============ -->
+<dialog id="patient-dialog">
+  <form method="dialog">
+    <div class="dlg-head" id="patient-dlg-title">利用者を追加</div>
+    <div class="dlg-body">
+      <div class="field">
+        <label>名前 *</label>
+        <input type="text" id="p-name" placeholder="例：山田 花子">
+      </div>
+      <div class="field">
+        <label>メモ（住所・注意事項など）</label>
+        <textarea id="p-memo" rows="3"></textarea>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="button" class="btn primary" id="p-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+
+/* ================= storage ================= */
+const LS_KEY = "vns_data_v1";
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (Array.isArray(d.nurses) && Array.isArray(d.patients) && Array.isArray(d.visits)) return d;
+    }
+  } catch (e) { /* fall through */ }
+  return { nurses: [], patients: [], visits: [] };
+}
+function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+/* ================= helpers ================= */
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
+const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+
+function fmtDate(d) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+function parseDate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function mondayOf(d) { const r = new Date(d); const wd = (r.getDay() + 6) % 7; return addDays(r, -wd); }
+function todayStr() { return fmtDate(new Date()); }
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function hexToRgba(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return `rgba(156,163,175,${a})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function contrastText(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return "#fff";
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#1f2937" : "#fff";
+}
+
+const getNurse = id => state.nurses.find(n => n.id === id);
+const getPatient = id => state.patients.find(p => p.id === id);
+const nurseColor = id => (getNurse(id) || {}).color || "#9ca3af";
+const nurseName = id => (getNurse(id) || {}).name || "（担当未設定）";
+const patientName = id => (getPatient(id) || {}).name || "（利用者不明）";
+
+function visitsOn(dateStr) {
+  return state.visits
+    .filter(v => v.date === dateStr && !ui.hiddenNurses.has(v.nurseId))
+    .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+}
+
+/* ================= UI state ================= */
+const ui = {
+  tab: "schedule",
+  view: "week",
+  anchor: new Date(),        // day currently in focus
+  hiddenNurses: new Set(),   // nurse ids filtered out
+};
+
+/* ================= tabs ================= */
+document.querySelectorAll(".tab-btn").forEach(b => {
+  b.addEventListener("click", () => {
+    ui.tab = b.dataset.tab;
+    document.querySelectorAll(".tab-btn").forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll("section[id^='tab-']").forEach(s => s.classList.toggle("active", s.id === "tab-" + ui.tab));
+    renderAll();
+  });
+});
+
+/* ================= schedule rendering ================= */
+function renderLegend() {
+  const el = document.getElementById("legend");
+  if (!state.nurses.length) { el.innerHTML = ""; return; }
+  let html = `<span class="legend-label">表示：</span>`;
+  for (const n of state.nurses) {
+    const off = ui.hiddenNurses.has(n.id);
+    html += `<button class="chip ${off ? "off" : ""}" data-nurse="${n.id}" title="クリックで表示/非表示">
+      <span class="dot" style="background:${n.color}"></span>${escapeHtml(n.name)}</button>`;
+  }
+  if (ui.hiddenNurses.size) html += `<button class="chip" data-nurse="__all__">全員表示</button>`;
+  el.innerHTML = html;
+}
+document.getElementById("legend").addEventListener("click", e => {
+  const chip = e.target.closest("[data-nurse]");
+  if (!chip) return;
+  const id = chip.dataset.nurse;
+  if (id === "__all__") ui.hiddenNurses.clear();
+  else ui.hiddenNurses.has(id) ? ui.hiddenNurses.delete(id) : ui.hiddenNurses.add(id);
+  renderSchedule();
+});
+
+function visitCardHtml(v, compact) {
+  const c = nurseColor(v.nurseId);
+  const bg = hexToRgba(c, 0.13);
+  const memo = v.memo ? ` title="${escapeHtml(v.memo)}"` : "";
+  return `<div class="visit" data-id="${v.id}" style="--c:${c};background:${bg}"${memo}>
+    <span class="v-time">${v.start || ""}${v.end ? "–" + v.end : ""}</span>
+    <span class="v-patient">${escapeHtml(patientName(v.patientId))}</span><br>
+    <span class="v-nurse" style="background:${c};color:${contrastText(c)}">${escapeHtml(nurseName(v.nurseId))}</span>
+    ${!compact && v.memo ? `<span style="color:var(--muted);font-size:11.5px;"> ${escapeHtml(v.memo)}</span>` : ""}
+  </div>`;
+}
+
+function renderSchedule() {
+  renderLegend();
+  const cal = document.getElementById("calendar");
+  const label = document.getElementById("period-label");
+  document.querySelectorAll("#view-switch button").forEach(b => b.classList.toggle("active", b.dataset.view === ui.view));
+  document.getElementById("btn-copy-week").style.display = ui.view === "week" ? "" : "none";
+
+  if (!state.nurses.length && !state.visits.length) {
+    label.textContent = "";
+    cal.innerHTML = `<div class="empty-note">まず「スタッフ」タブでスタッフを、「利用者」タブで利用者を登録してください。<br>
+      お試しの場合は「データ」タブの<b>サンプルデータを投入</b>が便利です。</div>`;
+    return;
+  }
+
+  const today = todayStr();
+
+  if (ui.view === "week") {
+    const mon = mondayOf(ui.anchor);
+    const sun = addDays(mon, 6);
+    label.textContent = `${mon.getFullYear()}年${mon.getMonth() + 1}月${mon.getDate()}日〜` +
+      (mon.getMonth() === sun.getMonth() ? `${sun.getDate()}日` : `${sun.getMonth() + 1}月${sun.getDate()}日`);
+    let html = `<div class="week-grid">`;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(mon, i);
+      const ds = fmtDate(d);
+      const vs = visitsOn(ds);
+      const dowCls = d.getDay() === 0 ? "sun" : d.getDay() === 6 ? "sat" : "";
+      html += `<div class="day-col ${ds === today ? "today" : ""} ${vs.length ? "" : "empty-day"}">
+        <div class="day-head">
+          <span class="day-num">${d.getDate()}</span>
+          <span class="dow ${dowCls}">(${DOW[d.getDay()]})</span>
+          <button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>
+        </div>
+        <div class="day-events">${vs.map(v => visitCardHtml(v, true)).join("")}</div>
+      </div>`;
+    }
+    cal.innerHTML = html + `</div>`;
+
+  } else if (ui.view === "day") {
+    const d = ui.anchor;
+    const ds = fmtDate(d);
+    label.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 (${DOW[d.getDay()]})`;
+    const vs = visitsOn(ds);
+    cal.innerHTML = `<div class="day-list">` +
+      (vs.length ? vs.map(v => visitCardHtml(v, false)).join("") : `<div class="empty-note">この日の予定はありません</div>`) +
+      `</div>`;
+
+  } else { // month
+    const y = ui.anchor.getFullYear(), m = ui.anchor.getMonth();
+    label.textContent = `${y}年${m + 1}月`;
+    const first = mondayOf(new Date(y, m, 1));
+    let html = `<div class="month-head">${["月","火","水","木","金","土","日"].map(d => `<div>${d}</div>`).join("")}</div><div class="month-grid">`;
+    for (let i = 0; i < 42; i++) {
+      const d = addDays(first, i);
+      if (i === 35 && d.getMonth() !== m) break;
+      const ds = fmtDate(d);
+      const vs = visitsOn(ds);
+      const shown = vs.slice(0, 3);
+      html += `<div class="month-cell ${d.getMonth() !== m ? "other" : ""} ${ds === today ? "today" : ""}" data-date="${ds}">
+        <div class="m-date">${d.getDate()}</div>
+        ${shown.map(v => {
+          const c = nurseColor(v.nurseId);
+          return `<div class="m-pill" style="background:${c};color:${contrastText(c)}">${v.start || ""} ${escapeHtml(patientName(v.patientId))}</div>`;
+        }).join("")}
+        ${vs.length > 3 ? `<div class="m-more">他${vs.length - 3}件</div>` : ""}
+      </div>`;
+    }
+    cal.innerHTML = html + `</div>`;
+  }
+}
+
+document.getElementById("calendar").addEventListener("click", e => {
+  const add = e.target.closest(".day-add");
+  if (add) { openVisitDialog(null, add.dataset.date); return; }
+  const card = e.target.closest(".visit[data-id]");
+  if (card) {
+    const v = state.visits.find(x => x.id === card.dataset.id);
+    if (v) openVisitDialog(v);
+    return;
+  }
+  const cell = e.target.closest(".month-cell[data-date]");
+  if (cell) { ui.anchor = parseDate(cell.dataset.date); ui.view = "day"; renderSchedule(); }
+});
+
+/* --- toolbar nav --- */
+document.getElementById("btn-prev").addEventListener("click", () => shift(-1));
+document.getElementById("btn-next").addEventListener("click", () => shift(1));
+document.getElementById("btn-today").addEventListener("click", () => { ui.anchor = new Date(); renderSchedule(); });
+function shift(dir) {
+  if (ui.view === "day") ui.anchor = addDays(ui.anchor, dir);
+  else if (ui.view === "week") ui.anchor = addDays(ui.anchor, dir * 7);
+  else ui.anchor = new Date(ui.anchor.getFullYear(), ui.anchor.getMonth() + dir, 1);
+  renderSchedule();
+}
+document.getElementById("view-switch").addEventListener("click", e => {
+  const b = e.target.closest("button[data-view]");
+  if (b) { ui.view = b.dataset.view; renderSchedule(); }
+});
+
+/* --- copy previous week --- */
+document.getElementById("btn-copy-week").addEventListener("click", () => {
+  const mon = mondayOf(ui.anchor);
+  const prevMon = addDays(mon, -7);
+  const prevDates = new Set(Array.from({ length: 7 }, (_, i) => fmtDate(addDays(prevMon, i))));
+  const src = state.visits.filter(v => prevDates.has(v.date));
+  if (!src.length) { alert("前の週に予定がありません。"); return; }
+  if (!confirm(`前の週の予定 ${src.length}件 をこの週にコピーしますか？`)) return;
+  let copied = 0;
+  for (const v of src) {
+    const newDate = fmtDate(addDays(parseDate(v.date), 7));
+    const dup = state.visits.some(x => x.date === newDate && x.patientId === v.patientId && x.nurseId === v.nurseId && x.start === v.start);
+    if (dup) continue;
+    state.visits.push({ ...v, id: uuid(), date: newDate });
+    copied++;
+  }
+  saveState();
+  renderSchedule();
+  alert(`${copied}件コピーしました。${src.length - copied ? `（重複 ${src.length - copied}件はスキップ）` : ""}`);
+});
+
+/* ================= visit dialog ================= */
+const visitDlg = document.getElementById("visit-dialog");
+let editingVisitId = null;
+
+function fillSelect(sel, items, selectedId, placeholder) {
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    items.map(i => `<option value="${i.id}" ${i.id === selectedId ? "selected" : ""}>${escapeHtml(i.name)}</option>`).join("");
+}
+
+function openVisitDialog(visit, presetDate) {
+  if (!state.patients.length || !state.nurses.length) {
+    alert("先にスタッフと利用者を登録してください。");
+    return;
+  }
+  editingVisitId = visit ? visit.id : null;
+  document.getElementById("visit-dlg-title").textContent = visit ? "予定を編集" : "予定を追加";
+  fillSelect(document.getElementById("v-patient"), state.patients, visit?.patientId, "選択してください");
+  fillSelect(document.getElementById("v-nurse"), state.nurses, visit?.nurseId, "選択してください");
+  document.getElementById("v-date").value = visit ? visit.date : (presetDate || fmtDate(ui.anchor));
+  document.getElementById("v-start").value = visit?.start || "09:00";
+  document.getElementById("v-end").value = visit?.end || "10:00";
+  document.getElementById("v-memo").value = visit?.memo || "";
+  document.getElementById("v-repeat").checked = false;
+  document.getElementById("repeat-section").style.display = visit ? "none" : "";
+  document.getElementById("v-delete").style.display = visit ? "" : "none";
+  visitDlg.showModal();
+}
+document.getElementById("btn-add-visit").addEventListener("click", () => openVisitDialog(null, fmtDate(ui.anchor)));
+
+document.getElementById("v-save").addEventListener("click", () => {
+  const patientId = document.getElementById("v-patient").value;
+  const nurseId = document.getElementById("v-nurse").value;
+  const date = document.getElementById("v-date").value;
+  const start = document.getElementById("v-start").value;
+  const end = document.getElementById("v-end").value;
+  const memo = document.getElementById("v-memo").value.trim();
+  if (!patientId || !nurseId || !date) { alert("利用者・担当スタッフ・日付は必須です。"); return; }
+  if (start && end && end <= start) { alert("終了時刻は開始時刻より後にしてください。"); return; }
+
+  if (editingVisitId) {
+    const v = state.visits.find(x => x.id === editingVisitId);
+    Object.assign(v, { patientId, nurseId, date, start, end, memo });
+  } else {
+    const repeat = document.getElementById("v-repeat").checked;
+    const weeks = repeat ? Math.min(26, Math.max(2, Number(document.getElementById("v-repeat-weeks").value) || 4)) : 1;
+    for (let w = 0; w < weeks; w++) {
+      state.visits.push({ id: uuid(), patientId, nurseId, date: fmtDate(addDays(parseDate(date), w * 7)), start, end, memo });
+    }
+  }
+  saveState();
+  visitDlg.close();
+  renderSchedule();
+});
+document.getElementById("v-delete").addEventListener("click", () => {
+  if (!editingVisitId) return;
+  if (!confirm("この予定を削除しますか？")) return;
+  state.visits = state.visits.filter(v => v.id !== editingVisitId);
+  saveState();
+  visitDlg.close();
+  renderSchedule();
+});
+
+/* ================= nurse CRUD ================= */
+const PALETTE = [
+  "#e6194b", "#3cb44b", "#f5c518", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6",
+  "#7cbb3f", "#e982a4", "#008080", "#b385e0", "#9a6324", "#2f4f8f", "#800000", "#3aa17e",
+  "#808000", "#d98850", "#000075", "#607d8b", "#ff6f61", "#6b5b95", "#88b04b", "#0f7173",
+];
+const nurseDlg = document.getElementById("nurse-dialog");
+let editingNurseId = null;
+let selectedColor = PALETTE[0];
+
+function renderPalette() {
+  document.getElementById("n-palette").innerHTML = PALETTE.map(c =>
+    `<button type="button" class="pal-swatch ${c === selectedColor ? "selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+  ).join("");
+}
+document.getElementById("n-palette").addEventListener("click", e => {
+  const b = e.target.closest("[data-color]");
+  if (!b) return;
+  selectedColor = b.dataset.color;
+  document.getElementById("n-custom-color").value = selectedColor;
+  renderPalette();
+});
+document.getElementById("n-custom-color").addEventListener("input", e => {
+  selectedColor = e.target.value;
+  renderPalette();
+});
+
+function nextFreeColor() {
+  const used = new Set(state.nurses.map(n => n.color));
+  return PALETTE.find(c => !used.has(c)) || PALETTE[state.nurses.length % PALETTE.length];
+}
+
+function openNurseDialog(nurse) {
+  editingNurseId = nurse ? nurse.id : null;
+  document.getElementById("nurse-dlg-title").textContent = nurse ? "スタッフを編集" : "スタッフを追加";
+  document.getElementById("n-name").value = nurse?.name || "";
+  selectedColor = nurse?.color || nextFreeColor();
+  document.getElementById("n-custom-color").value = /^#[0-9a-f]{6}$/i.test(selectedColor) ? selectedColor : "#2563eb";
+  renderPalette();
+  nurseDlg.showModal();
+}
+document.getElementById("btn-add-nurse").addEventListener("click", () => openNurseDialog(null));
+
+document.getElementById("n-save").addEventListener("click", () => {
+  const name = document.getElementById("n-name").value.trim();
+  if (!name) { alert("名前を入力してください。"); return; }
+  if (editingNurseId) {
+    Object.assign(state.nurses.find(n => n.id === editingNurseId), { name, color: selectedColor });
+  } else {
+    state.nurses.push({ id: uuid(), name, color: selectedColor });
+  }
+  saveState();
+  nurseDlg.close();
+  renderAll();
+});
+
+function renderNurseList() {
+  const el = document.getElementById("nurse-list");
+  if (!state.nurses.length) {
+    el.innerHTML = `<div class="empty-note">スタッフが登録されていません。「＋ スタッフ追加」から登録してください。</div>`;
+    return;
+  }
+  el.innerHTML = state.nurses.map(n => {
+    const count = state.visits.filter(v => v.nurseId === n.id && v.date >= todayStr()).length;
+    return `<div class="item-card">
+      <div class="swatch" style="background:${n.color}"></div>
+      <div class="info">
+        <div class="name">${escapeHtml(n.name)}</div>
+        <div class="sub">今後の予定 ${count}件</div>
+      </div>
+      <div class="actions">
+        <button class="btn small" data-edit-nurse="${n.id}">編集</button>
+        <button class="btn small danger" data-del-nurse="${n.id}">削除</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+document.getElementById("nurse-list").addEventListener("click", e => {
+  const eb = e.target.closest("[data-edit-nurse]");
+  if (eb) { openNurseDialog(getNurse(eb.dataset.editNurse)); return; }
+  const db = e.target.closest("[data-del-nurse]");
+  if (db) {
+    const n = getNurse(db.dataset.delNurse);
+    const count = state.visits.filter(v => v.nurseId === n.id).length;
+    const msg = count
+      ? `「${n.name}」を削除しますか？\nこのスタッフの予定が ${count}件 あります。予定は残り「担当未設定」（グレー表示）になります。`
+      : `「${n.name}」を削除しますか？`;
+    if (!confirm(msg)) return;
+    state.nurses = state.nurses.filter(x => x.id !== n.id);
+    ui.hiddenNurses.delete(n.id);
+    saveState();
+    renderAll();
+  }
+});
+
+/* ================= patient CRUD ================= */
+const patientDlg = document.getElementById("patient-dialog");
+let editingPatientId = null;
+
+function openPatientDialog(p) {
+  editingPatientId = p ? p.id : null;
+  document.getElementById("patient-dlg-title").textContent = p ? "利用者を編集" : "利用者を追加";
+  document.getElementById("p-name").value = p?.name || "";
+  document.getElementById("p-memo").value = p?.memo || "";
+  patientDlg.showModal();
+}
+document.getElementById("btn-add-patient").addEventListener("click", () => openPatientDialog(null));
+
+document.getElementById("p-save").addEventListener("click", () => {
+  const name = document.getElementById("p-name").value.trim();
+  const memo = document.getElementById("p-memo").value.trim();
+  if (!name) { alert("名前を入力してください。"); return; }
+  if (editingPatientId) {
+    Object.assign(state.patients.find(p => p.id === editingPatientId), { name, memo });
+  } else {
+    state.patients.push({ id: uuid(), name, memo });
+  }
+  saveState();
+  patientDlg.close();
+  renderAll();
+});
+
+function renderPatientList() {
+  const el = document.getElementById("patient-list");
+  if (!state.patients.length) {
+    el.innerHTML = `<div class="empty-note">利用者が登録されていません。「＋ 利用者追加」から登録してください。</div>`;
+    return;
+  }
+  el.innerHTML = state.patients.map(p => {
+    const count = state.visits.filter(v => v.patientId === p.id && v.date >= todayStr()).length;
+    return `<div class="item-card">
+      <div class="info">
+        <div class="name">${escapeHtml(p.name)}</div>
+        <div class="sub">${escapeHtml(p.memo || "")}　今後の予定 ${count}件</div>
+      </div>
+      <div class="actions">
+        <button class="btn small" data-edit-patient="${p.id}">編集</button>
+        <button class="btn small danger" data-del-patient="${p.id}">削除</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+document.getElementById("patient-list").addEventListener("click", e => {
+  const eb = e.target.closest("[data-edit-patient]");
+  if (eb) { openPatientDialog(getPatient(eb.dataset.editPatient)); return; }
+  const db = e.target.closest("[data-del-patient]");
+  if (db) {
+    const p = getPatient(db.dataset.delPatient);
+    const count = state.visits.filter(v => v.patientId === p.id).length;
+    const msg = count
+      ? `「${p.name}」を削除しますか？\nこの利用者の予定 ${count}件 も一緒に削除されます。`
+      : `「${p.name}」を削除しますか？`;
+    if (!confirm(msg)) return;
+    state.patients = state.patients.filter(x => x.id !== p.id);
+    state.visits = state.visits.filter(v => v.patientId !== p.id);
+    saveState();
+    renderAll();
+  }
+});
+
+/* ================= data tab ================= */
+function renderDataStats() {
+  document.getElementById("data-stats").textContent =
+    `スタッフ ${state.nurses.length}名 ／ 利用者 ${state.patients.length}名 ／ 予定 ${state.visits.length}件`;
+}
+document.getElementById("btn-export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `houkan-schedule-${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+document.getElementById("import-file").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const d = JSON.parse(reader.result);
+      if (!Array.isArray(d.nurses) || !Array.isArray(d.patients) || !Array.isArray(d.visits)) throw new Error("bad format");
+      if (!confirm(`インポートすると現在のデータは上書きされます。よろしいですか？\n（スタッフ${d.nurses.length}名／利用者${d.patients.length}名／予定${d.visits.length}件）`)) return;
+      state = d;
+      saveState();
+      renderAll();
+      alert("インポートしました。");
+    } catch {
+      alert("ファイルの形式が正しくありません。");
+    }
+    e.target.value = "";
+  };
+  reader.readAsText(file);
+});
+document.getElementById("btn-clear").addEventListener("click", () => {
+  if (!confirm("すべてのデータを削除します。よろしいですか？")) return;
+  if (!confirm("本当に削除しますか？この操作は元に戻せません。")) return;
+  state = { nurses: [], patients: [], visits: [] };
+  saveState();
+  renderAll();
+});
+
+document.getElementById("btn-sample").addEventListener("click", () => {
+  if ((state.nurses.length || state.visits.length) &&
+      !confirm("現在のデータは上書きされます。サンプルデータを投入しますか？")) return;
+  const n1 = uuid(), n2 = uuid(), n3 = uuid();
+  const p1 = uuid(), p2 = uuid(), p3 = uuid(), p4 = uuid();
+  const mon = mondayOf(new Date());
+  const d = i => fmtDate(addDays(mon, i));
+  state = {
+    nurses: [
+      { id: n1, name: "佐藤", color: "#e6194b" },
+      { id: n2, name: "鈴木", color: "#4363d8" },
+      { id: n3, name: "田中", color: "#3cb44b" },
+    ],
+    patients: [
+      { id: p1, name: "山田 花子", memo: "週2回・服薬管理" },
+      { id: p2, name: "高橋 一郎", memo: "リハビリ・月水金" },
+      { id: p3, name: "伊藤 幸子", memo: "褥瘡処置" },
+      { id: p4, name: "渡辺 健", memo: "バイタル確認" },
+    ],
+    visits: [
+      { id: uuid(), patientId: p1, nurseId: n1, date: d(0), start: "09:00", end: "10:00", memo: "服薬確認" },
+      { id: uuid(), patientId: p2, nurseId: n2, date: d(0), start: "10:30", end: "11:30", memo: "リハビリ" },
+      { id: uuid(), patientId: p3, nurseId: n3, date: d(0), start: "14:00", end: "15:00", memo: "処置" },
+      { id: uuid(), patientId: p4, nurseId: n1, date: d(1), start: "09:30", end: "10:30", memo: "" },
+      { id: uuid(), patientId: p2, nurseId: n2, date: d(2), start: "10:30", end: "11:30", memo: "リハビリ" },
+      { id: uuid(), patientId: p1, nurseId: n3, date: d(3), start: "09:00", end: "10:00", memo: "" },
+      { id: uuid(), patientId: p3, nurseId: n1, date: d(3), start: "13:00", end: "14:00", memo: "処置" },
+      { id: uuid(), patientId: p2, nurseId: n2, date: d(4), start: "10:30", end: "11:30", memo: "リハビリ" },
+      { id: uuid(), patientId: p4, nurseId: n3, date: d(4), start: "15:00", end: "16:00", memo: "" },
+    ],
+  };
+  saveState();
+  renderAll();
+  alert("サンプルデータを投入しました。「スケジュール」タブで確認してください。");
+});
+
+/* ================= dialogs: cancel buttons ================= */
+document.querySelectorAll("dialog [data-close]").forEach(b =>
+  b.addEventListener("click", () => b.closest("dialog").close()));
+
+/* ================= boot ================= */
+function renderAll() {
+  renderSchedule();
+  renderNurseList();
+  renderPatientList();
+  renderDataStats();
+}
+renderAll();
+</script>
+</body>
+</html>
