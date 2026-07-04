@@ -349,6 +349,7 @@
     <button class="tab-btn active" data-tab="schedule">📅 スケジュール</button>
     <button class="tab-btn" data-tab="staff">👩‍⚕️ スタッフ</button>
     <button class="tab-btn" data-tab="patients">🏠 利用者</button>
+    <button class="tab-btn" data-tab="masters">🗂 マスタ</button>
     <button class="tab-btn" data-tab="data">💾 データ</button>
     <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
   </nav>
@@ -382,9 +383,12 @@
       <button class="btn primary" id="btn-add-nurse">＋ スタッフ追加</button>
     </div>
     <div class="item-list" id="nurse-list"></div>
+  </section>
 
-    <div class="page-head" style="margin-top:28px;">
-      <h2>マスタ管理</h2>
+  <!-- ============ master maintenance ============ -->
+  <section id="tab-masters">
+    <div class="page-head">
+      <h2>マスタメンテナンス</h2>
     </div>
     <div class="master-grid">
       <div class="data-card">
@@ -446,17 +450,17 @@
       <p>スタッフ・利用者・予定・終日イベントのすべてをJSONファイルとしてダウンロードします。</p>
       <button class="btn primary" id="btn-export">エクスポート</button>
     </div>
-    <div class="data-card">
+    <div class="data-card" id="card-restore">
       <h3>全データの復元（インポート）</h3>
       <p>バックアップしたJSONファイルを読み込みます。現在のデータは上書きされます。</p>
       <input type="file" id="import-file" accept=".json,application/json">
     </div>
-    <div class="data-card">
+    <div class="data-card" id="card-sample">
       <h3>サンプルデータ</h3>
       <p>動作確認用のサンプル（スタッフ3名・利用者4名・今週の予定）を投入します。現在のデータは上書きされます。</p>
       <button class="btn" id="btn-sample">サンプルデータを投入</button>
     </div>
-    <div class="data-card">
+    <div class="data-card" id="card-clear">
       <h3>全データ削除</h3>
       <p>すべてのスタッフ・利用者・予定を削除します。元に戻せません。</p>
       <button class="btn danger" id="btn-clear">全データを削除</button>
@@ -483,6 +487,16 @@
         <span>〜</span>
         <select id="set-end-hour" class="set-select"></select>
       </div>
+    </div>
+    <div class="data-card">
+      <h3>権限</h3>
+      <p>この端末での操作範囲を設定します。<b>管理者</b>＝すべての操作／<b>利用者</b>＝スケジュール・名簿の編集（マスタメンテナンス、全データの復元・削除は不可）／<b>参照のみ</b>＝閲覧だけで編集不可。</p>
+      <select id="set-role" class="set-select">
+        <option value="admin">管理者</option>
+        <option value="user">利用者</option>
+        <option value="viewer">参照のみ</option>
+      </select>
+      <p style="margin-top:10px;">※現在はログイン機能がないため端末ごとの切り替え式（誤操作防止用）です。将来ログイン機能を導入した際に、この権限をアカウントへ紐付ける想定です。</p>
     </div>
     <div class="data-card">
       <p style="margin:0;">設定は自動保存され、この端末（ブラウザ）にのみ適用されます。</p>
@@ -693,8 +707,31 @@ function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
 /* ================= personal settings ================= */
 const SETTINGS_KEY = "vns_settings_v1";
-const DEFAULT_SETTINGS = { defaultView: "week", weekStartHour: 0, weekEndHour: 24 };
+const DEFAULT_SETTINGS = { defaultView: "week", weekStartHour: 0, weekEndHour: 24, role: "admin" };
 let settings = loadSettings();
+
+/* ---- 権限（将来のログイン機能で使う想定。現在は端末ごとの切替） ----
+   admin  管理者：すべての操作
+   user   利用者：スケジュール・名簿の編集可。マスタメンテナンス、全データの復元/削除等は不可
+   viewer 参照のみ：閲覧のみ（編集操作はすべて不可） */
+const canEdit = () => settings.role !== "viewer";
+const isAdmin = () => settings.role === "admin";
+
+function applyRole() {
+  document.querySelector('.tab-btn[data-tab="masters"]').style.display = isAdmin() ? "" : "none";
+  document.querySelector('.tab-btn[data-tab="data"]').style.display = canEdit() ? "" : "none";
+  document.getElementById("btn-add-visit").style.display = canEdit() ? "" : "none";
+  document.getElementById("btn-add-nurse").style.display = canEdit() ? "" : "none";
+  document.getElementById("btn-add-patient").style.display = canEdit() ? "" : "none";
+  // データタブ内の管理者限定機能
+  for (const id of ["card-restore", "card-sample", "card-clear"]) {
+    document.getElementById(id).style.display = isAdmin() ? "" : "none";
+  }
+  // 表示中のタブが権限外になったらスケジュールへ戻す
+  if ((ui.tab === "masters" && !isAdmin()) || (ui.tab === "data" && !canEdit())) {
+    document.querySelector('.tab-btn[data-tab="schedule"]').click();
+  }
+}
 
 function loadSettings() {
   try {
@@ -730,6 +767,14 @@ function initSettingsUI() {
   };
   sh.addEventListener("change", applyHours);
   eh.addEventListener("change", applyHours);
+  const sr = document.getElementById("set-role");
+  sr.value = settings.role;
+  sr.addEventListener("change", () => {
+    settings.role = sr.value;
+    saveSettings();
+    applyRole();
+    renderAll();
+  });
 }
 
 /* ================= helpers ================= */
@@ -978,9 +1023,9 @@ function timeGridHtml(startDate, numDays) {
     const red = (d.getDay() === 0 || holiday) ? "holiday-red" : "";
     const evs = eventsOn(ds);
     html += `<div class="tg-dayhead ${ds === today ? "today" : ""}">
-      <div class="dh-top"><span class="day-num ${red}">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span><button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button></div>
+      <div class="dh-top"><span class="day-num ${red}">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span>${canEdit() ? `<button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>` : ""}</div>
       ${holiday ? `<div class="holiday-label" title="${escapeHtml(holiday)}">${escapeHtml(holiday)}</div>` : ""}
-      <div class="allday-zone" data-date="${ds}" title="クリックで終日イベントを追加">
+      <div class="allday-zone" data-date="${ds}" ${canEdit() ? `title="クリックで終日イベントを追加"` : ""}>
         ${evs.map(ev => `<button type="button" class="allday-ev" data-evid="${ev.id}" title="${escapeHtml(ev.text)}">${escapeHtml(ev.text)}</button>`).join("")}
       </div>
     </div>`;
@@ -1037,7 +1082,7 @@ function renderSchedule() {
   const cal = document.getElementById("calendar");
   const label = document.getElementById("period-label");
   document.querySelectorAll("#view-switch button").forEach(b => b.classList.toggle("active", b.dataset.view === ui.view));
-  document.getElementById("btn-copy-week").style.display = ui.view === "week" ? "" : "none";
+  document.getElementById("btn-copy-week").style.display = (ui.view === "week" && canEdit()) ? "" : "none";
 
   if (!state.nurses.length && !state.visits.length) {
     label.textContent = "";
@@ -1091,6 +1136,12 @@ function renderSchedule() {
 
 document.getElementById("calendar").addEventListener("click", e => {
   if (suppressNextClick) { suppressNextClick = false; return; }
+  if (!canEdit()) {
+    // 参照のみ：月セルから日表示への移動だけ許可
+    const cell = e.target.closest(".month-cell[data-date]");
+    if (cell) { ui.anchor = parseDate(cell.dataset.date); ui.view = "day"; renderSchedule(); }
+    return;
+  }
   const add = e.target.closest(".day-add");
   if (add) { openVisitDialog(null, add.dataset.date); return; }
   const aev = e.target.closest(".allday-ev[data-evid]");
@@ -1164,6 +1215,7 @@ function dayColAt(clientX) {
 }
 
 document.getElementById("calendar").addEventListener("pointerdown", e => {
+  if (!canEdit()) return;  // 参照のみ：作成・移動とも不可
   if (e.pointerType === "mouse" && e.button !== 0) return;
   suppressNextClick = false;
   const evEl = e.target.closest(".tg-ev[data-id]");
@@ -1466,10 +1518,10 @@ function renderNurseList() {
         <div class="name">${escapeHtml(n.name)}</div>
         <div class="sub">${escapeHtml(sub)}${sub ? "　" : ""}今後の予定 ${count}件</div>
       </div>
-      <div class="actions">
+      ${canEdit() ? `<div class="actions">
         <button class="btn small" data-edit-nurse="${n.id}">編集</button>
         <button class="btn small danger" data-del-nurse="${n.id}">削除</button>
-      </div>
+      </div>` : ""}
     </div>`;
   }).join("");
 }
@@ -1512,7 +1564,8 @@ function renderMasterLists() {
   }
 }
 
-document.getElementById("tab-staff").addEventListener("click", e => {
+document.getElementById("tab-masters").addEventListener("click", e => {
+  if (!isAdmin()) return;
   const addBtn = e.target.closest("[data-add-master]");
   if (addBtn) {
     const key = addBtn.dataset.addMaster;
@@ -1599,10 +1652,10 @@ function renderPatientList() {
         <div class="name">${escapeHtml(p.name)}</div>
         <div class="sub">${escapeHtml(sub)}${sub ? "　" : ""}今後の予定 ${count}件</div>
       </div>
-      <div class="actions">
+      ${canEdit() ? `<div class="actions">
         <button class="btn small" data-edit-patient="${p.id}">編集</button>
         <button class="btn small danger" data-del-patient="${p.id}">削除</button>
-      </div>
+      </div>` : ""}
     </div>`;
   }).join("");
 }
@@ -1850,6 +1903,7 @@ function renderAll() {
   renderDataStats();
 }
 initSettingsUI();
+applyRole();
 renderAll();
 </script>
 </body>
