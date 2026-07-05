@@ -130,6 +130,8 @@
     text-align: center; white-space: nowrap;
   }
   .tg-dayhead .dh-top { display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .dh-date { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 6px; padding: 1px 4px; }
+  .dh-date:hover { background: rgba(37, 99, 235, .12); }
   .day-num.holiday-red { color: #dc2626; }
   .tg-dayhead.today { background: #eff6ff; }
   .tg-dayhead.today .day-num {
@@ -1022,8 +1024,13 @@ function timeGridHtml(startDate, numDays) {
     const holiday = holidayName(ds);
     const red = (d.getDay() === 0 || holiday) ? "holiday-red" : "";
     const evs = eventsOn(ds);
+    const dateInner = `<span class="day-num ${red}">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span>`;
+    // 週表示は日付部分クリックで日表示へ遷移
+    const datePart = numDays === 7
+      ? `<span class="dh-date" data-goday="${ds}" title="この日を日表示で開く">${dateInner}</span>`
+      : dateInner;
     html += `<div class="tg-dayhead ${ds === today ? "today" : ""}">
-      <div class="dh-top"><span class="day-num ${red}">${d.getDate()}</span><span class="dow ${dowCls}">(${DOW[d.getDay()]})</span>${canEdit() ? `<button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>` : ""}</div>
+      <div class="dh-top">${datePart}${canEdit() ? `<button class="day-add" data-date="${ds}" title="この日に予定を追加">＋</button>` : ""}</div>
       ${holiday ? `<div class="holiday-label" title="${escapeHtml(holiday)}">${escapeHtml(holiday)}</div>` : ""}
       <div class="allday-zone" data-date="${ds}" ${canEdit() ? `title="クリックで終日イベントを追加"` : ""}>
         ${evs.map(ev => `<button type="button" class="allday-ev" data-evid="${ev.id}" title="${escapeHtml(ev.text)}">${escapeHtml(ev.text)}</button>`).join("")}
@@ -1136,6 +1143,9 @@ function renderSchedule() {
 
 document.getElementById("calendar").addEventListener("click", e => {
   if (suppressNextClick) { suppressNextClick = false; return; }
+  // 週表示：日付ヘッダーのクリックで日表示へ（全権限で可能）
+  const goday = e.target.closest("[data-goday]");
+  if (goday) { ui.anchor = parseDate(goday.dataset.goday); ui.view = "day"; renderSchedule(); return; }
   if (!canEdit()) {
     // 参照のみ：月セルから日表示への移動だけ許可
     const cell = e.target.closest(".month-cell[data-date]");
